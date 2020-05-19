@@ -1,0 +1,72 @@
+Home Assignment - Finding patterns in binary files
+
+Goal: Implement a tool in Python that can find matching patterns in binary files.
+Input:
+1.Path to a binary file.
+2.List/Map of hexadecimal strings/regular expressions.
+3.Extra arguments.
+example for the map(Python dict):
+{ '5D00008000': 'lzma',
+  '27051956': 'uImage',
+  '18286F01': 'zImage',
+  '1F8B0800': 'gzip',
+  '303730373031': 'cpio',
+  '303730373032': 'cpio',
+  '303730373033': 'cpio',
+  '894C5A4F000D0A1A0A': 'lzo',
+  '5D00000004': 'lzma',
+  'FD377A585A00': 'xz',
+  '314159265359': 'bzip2',
+  '425A6839314159265359': 'bzip2',
+  '04224D18': 'lz4',
+  '02214C18': 'lz4',
+  '1F9E08': 'gzip',
+  '71736873': 'squashfs',
+  '68737173': 'squashfs',
+  '51434454': 'dtb',
+  'D00DFEED': 'fit',
+  '7F454C46': 'elf'
+   ...
+   }
+You will also need to be able to find regex-like patterns.
+Examples:
+1. Find all the sequences of the repeating bytes in the file (with size above specific threshold).
+2. "/x00XXXXXX " - matching bytes that the first byte is '/x00'.
+Output: JSON format containing start and end offset for each matching pattern.
+example:(This is just a suggestion)
+{"results":
+[{'range': (1008, 1038), 'size': 30, 'repeating_byte': b'\x00'},
+ {'range': (1170, 1398), 'size': 228, 'repeating_byte': b'\x00'},
+ {'range': (7746, 7772), 'size': 26, 'repeating_byte': b'\xFF'},
+ {'range': (24853, 24920), 'size': 67, 'repeating_byte': b'\x00'},
+ {'range': (25621, 25688), 'size': 67, 'repeating_byte': b'\x11'},
+ {'range': (29886, 29910), 'size': 24, 'repeating_byte': b'-'}]
+}
+Examples for use-cases:
+* Finding offsets of paddings in a binary file.
+* Finding offsets of zip archives in a binary file.
+Technicalities:
+* Real-world style and quality – the code should be as close to production-ready
+ code in all aspects (e.g. correctness, handling edge cases, readability, style, design, etc.).  
+* You can choose the JSON schema for the output - Please make it readable so we can understand the results.
+* Don't use Linux commands like 'grep'.
+* Use hexadecimal for representing the offsets(in bytes).
+* Test your implementation on big binary files(Up to ~8GB).
+* Use the git DVCS.
+* You're encouraged to add more arguments in order to add functionality to your tool.
+For example - return only the 4-bytes aligned matches.
+* Environment: make sure your code is running on Python 3.6.x<=, Ubuntu 18.04.x.
+* Check the runtime of your search function, Speed is a very important factor.
+You can consider using parallelization in order to improve the results.
+* Avoid using Python modules that aren't built-in.
+What to submit:
+* Git repository containing your source code.
+* Specification of how to use and run your tool.
+Useful links:
+* Binary files -
+https://developers.google.com/android/images (prefer to test your tool on the latest images).
+(This is one source you can use, you're encouraged to test your tool on different binary files)
+Word of advice:
+* Be prepared to explain your implementation in detail.
+* This is a small task, not a project
+--
