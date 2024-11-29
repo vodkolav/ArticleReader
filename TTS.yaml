@@ -1,0 +1,19 @@
+name: TTS
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python <=3.11
+  - pip
+  - ipython
+  - ipykernel
+  - pandas
+  - pylatexenc
+  - pytorch==2.4.0
+  - torchaudio==2.4.0
+  - cpuonly
+  - PySoundFile
+  - nltk
+  - pip:
+      - speechbrain
+prefix: /media/michael/Data/anaconda3/envs/TTS
