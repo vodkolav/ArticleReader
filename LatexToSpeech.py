@@ -235,8 +235,8 @@ class Narrator:
 
   def loadModels(self):
     # Load SpeechBrain models
-    self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
-    self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
+    self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="checkpoints/tacotron2")
+    self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="checkpoints/hifigan")
 
 
   def orderUnorder(self,chunks, itemFn = len, reverse=True):
@@ -312,7 +312,7 @@ class Narrator:
 
 def main():
 
-  input_file = "arXiv-2106.04624v1/main.tex"
+  input_file = "data/arXiv-2106.04624v1/main.tex"
   output_file = "output/28.11.6"
 
   parser = LatexParser()
