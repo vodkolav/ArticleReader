@@ -32,7 +32,6 @@ class LatexParser:
               ('cite' , "{"), # '<cit.>'
               ('citet', "{"),
               ('citep', "{"),
-              ('CC', "{")
               #("def","[{")
     ]
 
@@ -40,7 +39,8 @@ class LatexParser:
     self.lw_context_db.add_context_category(
         'my-quotes',
         prepend=True,
-        macros=[macrospec.MacroSpec(nam, pars) for (nam,pars) in self.ignore],
+        macros=[macrospec.MacroSpec(nam, pars) for (nam,pars) in self.ignore]+
+               [macrospec.MacroSpec("CC", "{")],
         environments= [macrospec.EnvironmentSpec('table', '['),
                        macrospec.EnvironmentSpec('figure', '[')]
     )
@@ -55,7 +55,8 @@ class LatexParser:
               latex2text.MacroTextSpec('ref', simplify_repl= self.fmt_ref_macro_node),
               latex2text.MacroTextSpec('section',self.fmt_subsections),
               latex2text.MacroTextSpec('subsection',self.fmt_subsections),
-              latex2text.MacroTextSpec('subsubsection',self.fmt_subsections)
+              latex2text.MacroTextSpec('subsubsection',self.fmt_subsections),
+              latex2text.MacroTextSpec("CC", "C plus plus")
               #,latex2text.MacroTextSpec('CC', 'C++')
               ],
       environments= [latex2text.EnvironmentTextSpec("table", simplify_repl=self.fmt_table_environment_node, discard=False),
@@ -128,9 +129,7 @@ class LatexParser:
     return "LatexSubsection: ERROR" 
 
   def get_tables(self):
-    tables = [self.document]
-    tables += [ f" % {t['label']} \n {t['content']} " for t in self.tables]
-    tables += ["\end{document}"]
+    tables = [ f" % {t['label']} \n {t['content']} " for t in self.tables]
     return "\n".join(tables)
   
   #
@@ -213,20 +212,22 @@ class LatexParser:
 class Chunker:
 
   def breakByWords(self, text, max_len=100):
-    ws = text.split(" ")
-    for i in range(len(ws)-1):
-      ws[i] = ws[i] + " " 
+    ss = re.split(r'[ \n]+', text)
+    #ss = text.split(" ")
+    for i in range(len(ss)-1):
+      ss[i] = ss[i] + " " 
     res = [] #ws[0]]  
     #print(len(ws))
-    for i in range(len(ws)):
-      if res and len(res[-1]) + 1 + len(ws[i]) < max_len:
-        res[-1] = res[-1] + ws[i]
+    for i in range(len(ss)):
+      if res and len(res[-1]) + 1 + len(ss[i]) < max_len:
+        res[-1] = res[-1] + ss[i]
       else:
-        res += [ws[i]]
+        res += [ss[i]]
     return res
 
   def breakByCommas(self, text, max_len=100):  
-    ss = text.split(", ")
+    ss = re.split(r'\,[ \n]?', text)
+    #ss = text.split(", ")
     for i in range(len(ss)-1):
       ss[i] = ss[i] + ", " 
 
@@ -245,7 +246,7 @@ class Chunker:
 
   def breakByPeriods(self, text, max_len=100):
     
-    ss = re.split(r'\. ?', text)
+    ss = re.split(r'\.[ \n]?', text)
     #ss = ss[:-1]
     ss = [s+ r". " for s in ss if len(s)>3]
     print(text)
@@ -264,7 +265,7 @@ class Chunker:
   def breakByParagraphs(self, text, max_len=100):
     #ss = re.split(r'(?:\.? +)?\n+', text) 
     
-    ss = re.split(r'(?: +)?\n+', text) 
+    ss = re.split(r'(?: +)?\n{2,}', text) 
     #ss = [s+ "\n" for s in ss]
     print(ss)
     res = [] #ss[0]]
@@ -284,6 +285,10 @@ class Chunker:
   def split_text_into_chunks(self, text, max_length=100):
       ## temporary hack for citation shit
       text = re.sub(" ([\.,])", r"\g<1>", text)
+
+      # deal with i.e an e.g. that break sentence separation 
+      text = text.replace("i.e.,", r"that is")
+      text = text.replace("e.g.,", r"for example")
       #print(text)
 
       self.chunks =  self.breakByParagraphs(text, max_len=max_length)
@@ -336,12 +341,15 @@ class Narrator:
     return order, unorder
 
 
+  def seq_len(self, item):
+    return self.tacotron2.text_to_seq(item)[1] 
+
 
   def text_to_speech(self, chunks):      
 
       #  must  sort chunks by length descending
 
-      order, unorder = self.orderUnorder(chunks)
+      order, unorder = self.orderUnorder(chunks, self.seq_len)
 
       ordered = [chunks[i] for i in order]
 
@@ -349,14 +357,13 @@ class Narrator:
       #return ordered, ordered, ordered
       print("run tacotron")
       mel_outputs, mel_lengths, alignments = self.tacotron2.encode_batch(ordered)
+           
 
-      print(mel_lengths)
-      
-
-      print("run hifigan")
+      print("run vocoder")
       hop_len = 256
       waveforms = self.hifi_gan.decode_batch(mel_outputs, mel_lengths, hop_len).squeeze(1)
 
+      print("adding pauses")
       # add pause between paragraphs
       mml = torch.ones_like(mel_lengths) * max(mel_lengths)
       pause_dur = 40
@@ -366,7 +373,7 @@ class Narrator:
       mel_lengths =  torch.min(mel_lengths, mml)
       #[min(mml,ml + p) for ml,p in zip(mel_lengths, pause)] 
 
-
+      print("recombine")
       # turn into array
       arr = torch.tensor_split(waveforms, len(order), dim=0)
 
@@ -390,7 +397,7 @@ class Narrator:
 def main():
 
   input_file = "data/arXiv-2106.04624v1/main.tex"
-  output_file = "output/02.12.24_02"
+  output_file = "output/02.12.24_03"
 
   parser = LatexParser()
   content = parser.read_latex(input_file)
@@ -404,13 +411,14 @@ def main():
   chunker = Chunker()
   chunker.split_text_into_chunks(processed)
   chunks = chunker.get_test_batch(100)
+  #chunks = chunker.chunks
   chunker.save_chunks_as_text(output_file + ".md", chunks)
 
   
   narrator = Narrator()
   waveform, order, alignments = narrator.text_to_speech(chunks)  
 
-
+  print("saving audio")
   narrator.save_audio(output_file + ".wav", waveform)
 
 
