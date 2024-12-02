@@ -7,7 +7,7 @@ from speechbrain.inference import Tacotron2, HIFIGAN
 
 import re
 
-
+from NodesVisitor import Extractor
 
 
 
@@ -28,6 +28,7 @@ class LatexParser:
               ("lstdefinestyle","{{"),
               ("lstset","{"),
               ("lstdefinelanguage","{{"),
+              ('footnote', '{'),
               ('cite' , "{"), # '<cit.>'
               ('citet', "{"),
               ('citep', "{"),
@@ -39,7 +40,9 @@ class LatexParser:
     self.lw_context_db.add_context_category(
         'my-quotes',
         prepend=True,
-        macros=[macrospec.MacroSpec(nam, pars) for (nam,pars) in self.ignore]
+        macros=[macrospec.MacroSpec(nam, pars) for (nam,pars) in self.ignore],
+        environments= [macrospec.EnvironmentSpec('table', '['),
+                       macrospec.EnvironmentSpec('figure', '[')]
     )
 
     self.l2t_context_db = latex2text.get_default_latex_context_db()
@@ -47,17 +50,89 @@ class LatexParser:
       'my-quotes',
       prepend=True,
       macros=[latex2text.MacroTextSpec(nam, simplify_repl=r'') for (nam,pars) in self.ignore] + 
-              [latex2text.MacroTextSpec('maketitle', lambda n, l2tobj: 
-                                        getattr(l2tobj, '_doc_title', r'[NO \title GIVEN]'))
+             [latex2text.MacroTextSpec('url', '%s'),
+              latex2text.MacroTextSpec('maketitle', self.maketitle),
+              latex2text.MacroTextSpec('ref', simplify_repl= self.fmt_ref_macro_node),
+              latex2text.MacroTextSpec('section',self.fmt_subsections),
+              latex2text.MacroTextSpec('subsection',self.fmt_subsections),
+              latex2text.MacroTextSpec('subsubsection',self.fmt_subsections)
               #,latex2text.MacroTextSpec('CC', 'C++')
-              ]
-  )
+              ],
+      environments= [latex2text.EnvironmentTextSpec("table", simplify_repl=self.fmt_table_environment_node, discard=False),
+                     latex2text.EnvironmentTextSpec("figure", simplify_repl=self.fmt_figure_environment_node, discard=False),
+                     #latex2text.EnvironmentTextSpec("tabular", simplify_repl=self.fmt_table_environment_node)
+                     ]
+                     )
+    self.tables = []
+    self.figures = []
 
-  def read_latex(self, filepath):
+  def maketitle(self, node, l2tobj):
+    return getattr(l2tobj, '_doc_title', r'[NO \title GIVEN]') + ".  "
+
+
+
+  def read_latex(self, filepath, size = -1):
     with open(filepath)as f:
-      content = f.read()
+      content = f.read(size)
     return content
 
+  def fmt_table_environment_node(self, node, l2tobj):
+
+    #if node.environmentname == 'table':
+    nv = Extractor()
+    res = nv.start(node)
+    if res: 
+      table_name = res['visited_results_body'][0]['label']
+      #table_name = table_name.replace(":","_")
+      #print(res)
+      found = { "label": f"{table_name}", "content": node.latex_verbatim()}
+      self.tables.append(found)
+
+
+      # content  =  #l2tobj.nodelist_to_text(node.nodelist)
+      # self.save_text(content, dest)
+      return "LatexTable: " + table_name
+    return "LatexTable: ERROR" 
+
+  def fmt_figure_environment_node(self, node, l2tobj):
+
+    #if node.environmentname == 'table':
+    nv = Extractor()
+    res = nv.start(node)
+    if res: 
+      figure_name = res['visited_results_body'][0]['label']
+      #table_name = table_name.replace(":","_")
+      #print(res)
+      found = { "label": f"{figure_name}", "content": node.latex_verbatim()}
+      self.figures.append(found)
+
+
+      # content  =  #l2tobj.nodelist_to_text(node.nodelist)
+      # self.save_text(content, dest)
+      return "LatexFigure: " + figure_name
+    return "LatexFigure: ERROR" 
+
+  def fmt_ref_macro_node(self, node, l2tobj):
+    res = node.nodeargs[0].nodelist.nodelist[0].chars
+    
+    if res: 
+      # self.save_text(content, dest)
+      return "LatexRef: " + res
+    return "LatexRef: ERROR" 
+
+
+  def fmt_subsections(self, node, l2tobj): 
+    res = l2tobj.node_arg_to_text(node, 2)
+    if res: 
+      return node.macroname.capitalize() + ": " + res + ".\n"
+    return "LatexSubsection: ERROR" 
+
+  def get_tables(self):
+    tables = [self.document]
+    tables += [ f" % {t['label']} \n {t['content']} " for t in self.tables]
+    tables += ["\end{document}"]
+    return "\n".join(tables)
+  
   #
   # Implement macros, environments, specials for the *conversion to text*
   #
@@ -121,13 +196,15 @@ class LatexParser:
 
 
   def postprocess(self, processed):
-    # Temporary hacks: manually remove all that latex parser didn't catch  
+    # Temporary hacks: 
+    # manually remove all that latex parser didn't catch  
     processed = processed.replace("C⁠[4].4ex++","").strip()
+    # shorten long spaces to just one
     processed = re.sub(r" {2,}", " ", processed)
     return processed
   
-  def save_text(text):
-    with open("processed.txt", "w+")as f:
+  def save_text(self, text, filename):
+    with open(filename, "w+")as f:
       f.write(text)
 
 
@@ -313,18 +390,23 @@ class Narrator:
 def main():
 
   input_file = "data/arXiv-2106.04624v1/main.tex"
-  output_file = "output/28.11.6"
+  output_file = "output/02.12.24_02"
 
   parser = LatexParser()
   content = parser.read_latex(input_file)
   processed = parser.custom_latex_to_text(content)
+  parser.save_text(processed, "dbg/spec_my.txt")
+
+  tables = parser.get_tables()
+  parser.save_text(tables, "dbg/tables.tex")
+
 
   chunker = Chunker()
   chunker.split_text_into_chunks(processed)
-  chunks = chunker.get_test_batch(50)
+  chunks = chunker.get_test_batch(100)
   chunker.save_chunks_as_text(output_file + ".md", chunks)
 
-
+  
   narrator = Narrator()
   waveform, order, alignments = narrator.text_to_speech(chunks)  
 
