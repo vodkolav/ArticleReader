@@ -4,7 +4,7 @@ from pylatexenc import latexwalker, latex2text, macrospec
 import torch
 import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
-
+import numpy as np 
 import re
 
 from NodesVisitor import Extractor
@@ -56,11 +56,12 @@ class LatexParser:
               latex2text.MacroTextSpec('section',self.fmt_subsections),
               latex2text.MacroTextSpec('subsection',self.fmt_subsections),
               latex2text.MacroTextSpec('subsubsection',self.fmt_subsections),
-              latex2text.MacroTextSpec("CC", "C plus plus")
+              latex2text.MacroTextSpec("CC", "si plus plus")
               #,latex2text.MacroTextSpec('CC', 'C++')
               ],
       environments= [latex2text.EnvironmentTextSpec("table", simplify_repl=self.fmt_table_environment_node, discard=False),
                      latex2text.EnvironmentTextSpec("figure", simplify_repl=self.fmt_figure_environment_node, discard=False),
+                     # TODO: math mode
                      #latex2text.EnvironmentTextSpec("tabular", simplify_repl=self.fmt_table_environment_node)
                      ]
                      )
@@ -198,6 +199,8 @@ class LatexParser:
     # Temporary hacks: 
     # manually remove all that latex parser didn't catch  
     processed = processed.replace("C⁠[4].4ex++","").strip()
+    #processed = processed.replace("si plus plus","").strip()
+    
     # shorten long spaces to just one
     processed = re.sub(r" {2,}", " ", processed)
     return processed
@@ -225,6 +228,44 @@ class Chunker:
         res += [ss[i]]
     return res
 
+
+
+  def breakByWordsEqual(self, text, maxlen = 100):
+    """break a sentence by words roughly equally in terms of character length
+
+    Raises:
+        ValueError: maxlen must be longer than words
+
+    Returns:
+        list: text broken down to several texts
+    """
+    ss = re.split(r'[ \n]+', text)  
+    lens = np.array([len(s)+1 for s in ss]) # lenghts of each word
+
+    if (max(lens)> maxlen):
+      raise ValueError("maxlen must be larger than lengths of words in text.")
+    
+    n = int(np.ceil(np.sum(lens) / maxlen))  # decide how many chunks needed
+    cs = int(np.floor(np.sum(lens) / n)) # decide avg size of chunk
+    csum = np.cumsum(lens)
+
+    # find cutoffs by which to distribute words into chunks 
+    cutoffs = [0]
+    for i in range(1,n):
+      x = [i*cs] * len(lens)
+      a = np.abs(x - csum)
+      cutoffs.append(np.argmin(a)) ##(y[y>=a]))
+    cutoffs += [len(ss)]
+
+    # distribute words into chunks
+    chunks = [''] * (len(cutoffs) - 1)
+    for i in range(len(cutoffs)-1):
+      f = cutoffs[i]
+      t = cutoffs[i+1]
+      chunks[i] = " ".join(ss[f:t]) + " "
+    return chunks
+
+
   def breakByCommas(self, text, max_len=100):  
     ss = re.split(r'\,[ \n]?', text)
     #ss = text.split(", ")
@@ -236,7 +277,7 @@ class Chunker:
     res = [] # [ss[0]]
     for i in range(len(ss)):
       if len(ss[i])>max_len:
-        res += self.breakByWords(ss[i])
+        res += self.breakByWordsEqual(ss[i])
         continue
       if res and len(res[-1]) + 2 + len(ss[i]) < max_len:
         res[-1] = res[-1]+ ss[i]
@@ -246,7 +287,7 @@ class Chunker:
 
   def breakByPeriods(self, text, max_len=100):
     
-    ss = re.split(r'\.[ \n]?', text)
+    ss = re.split(r'\.[ \n]', text)
     #ss = ss[:-1]
     ss = [s+ r". " for s in ss if len(s)>3]
     print(text)
@@ -287,8 +328,10 @@ class Chunker:
       text = re.sub(" ([\.,])", r"\g<1>", text)
 
       # deal with i.e an e.g. that break sentence separation 
-      text = text.replace("i.e.,", r"that is")
-      text = text.replace("e.g.,", r"for example")
+      #text = text.replace("i.e.,", r"that is")
+      #text = text.replace("e.g.,", r"for example")
+      text = text.replace("cf.",   r"confer")
+      
       #print(text)
 
       self.chunks =  self.breakByParagraphs(text, max_len=max_length)
@@ -397,7 +440,7 @@ class Narrator:
 def main():
 
   input_file = "data/arXiv-2106.04624v1/main.tex"
-  output_file = "output/02.12.24_03"
+  output_file = "output/03.12.24_01"
 
   parser = LatexParser()
   content = parser.read_latex(input_file)
