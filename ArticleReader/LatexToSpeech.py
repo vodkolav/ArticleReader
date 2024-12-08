@@ -6,7 +6,7 @@ import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 import numpy as np 
 import re
-
+from datetime import datetime as dt
 from NodesVisitor import Extractor
 
 
@@ -93,8 +93,8 @@ class LatexParser:
 
       # content  =  #l2tobj.nodelist_to_text(node.nodelist)
       # self.save_text(content, dest)
-      return "LatexTable: " + table_name
-    return "LatexTable: ERROR" 
+      return "" #"LatexTable: " + table_name
+    return "" #"LatexTable: ERROR" 
 
   def fmt_figure_environment_node(self, node, l2tobj):
 
@@ -111,25 +111,27 @@ class LatexParser:
 
       # content  =  #l2tobj.nodelist_to_text(node.nodelist)
       # self.save_text(content, dest)
-      return "LatexFigure: " + figure_name
-    return "LatexFigure: ERROR" 
+      return "" #"LatexFigure: " + figure_name
+    return "" #"LatexFigure: ERROR" 
 
   def fmt_ref_macro_node(self, node, l2tobj):
     res = node.nodeargs[0].nodelist.nodelist[0].chars
     
     if res: 
       # self.save_text(content, dest)
-      return "LatexRef: " + res
-    return "LatexRef: ERROR" 
+      return "one" #"LatexRef: " + res
+    return "oops" #"LatexRef: ERROR" 
 
 
   def fmt_subsections(self, node, l2tobj): 
     res = l2tobj.node_arg_to_text(node, 2)
     if res: 
       return node.macroname.capitalize() + ": " + res + ".\n"
-    return "LatexSubsection: ERROR" 
+    return "" #"LatexSubsection: ERROR" 
 
   def get_tables(self):
+    #TODO: convert to images:
+    # https://tex.stackexchange.com/questions/11866/compile-a-latex-document-into-a-png-image-thats-as-short-as-possible
     tables = [ f" % {t['label']} \n {t['content']} " for t in self.tables]
     return "\n".join(tables)
   
@@ -214,7 +216,10 @@ class LatexParser:
 
 class Chunker:
 
-  def breakByWords(self, text, max_len=100):
+  def __init__(self, max_len=100):
+    self.max_len = max_len
+
+  def breakByWords(self, text):
     ss = re.split(r'[ \n]+', text)
     #ss = text.split(" ")
     for i in range(len(ss)-1):
@@ -222,7 +227,7 @@ class Chunker:
     res = [] #ws[0]]  
     #print(len(ws))
     for i in range(len(ss)):
-      if res and len(res[-1]) + 1 + len(ss[i]) < max_len:
+      if res and len(res[-1]) + 1 + len(ss[i]) < self.max_len:
         res[-1] = res[-1] + ss[i]
       else:
         res += [ss[i]]
@@ -230,8 +235,8 @@ class Chunker:
 
 
 
-  def breakByWordsEqual(self, text, maxlen = 100):
-    """break a sentence by words roughly equally in terms of character length
+  def breakByWordsEqual(self, text):
+    """break a sentence into chunks of several words roughly equally, in terms of character length
 
     Raises:
         ValueError: maxlen must be longer than words
@@ -242,10 +247,10 @@ class Chunker:
     ss = re.split(r'[ \n]+', text)  
     lens = np.array([len(s)+1 for s in ss]) # lenghts of each word
 
-    if (max(lens)> maxlen):
+    if (max(lens)> self.max_len):
       raise ValueError("maxlen must be larger than lengths of words in text.")
     
-    n = int(np.ceil(np.sum(lens) / maxlen))  # decide how many chunks needed
+    n = int(np.ceil(np.sum(lens) / self.max_len))  # decide how many chunks needed
     cs = int(np.floor(np.sum(lens) / n)) # decide avg size of chunk
     csum = np.cumsum(lens)
 
@@ -266,7 +271,7 @@ class Chunker:
     return chunks
 
 
-  def breakByCommas(self, text, max_len=100):  
+  def breakByCommas(self, text):  
     ss = re.split(r'\,[ \n]?', text)
     #ss = text.split(", ")
     for i in range(len(ss)-1):
@@ -276,42 +281,42 @@ class Chunker:
     #print(ss)
     res = [] # [ss[0]]
     for i in range(len(ss)):
-      if len(ss[i])>max_len:
+      if len(ss[i])>self.max_len:
         res += self.breakByWordsEqual(ss[i])
         continue
-      if res and len(res[-1]) + 2 + len(ss[i]) < max_len:
+      if res and len(res[-1]) + 2 + len(ss[i]) < self.max_len:
         res[-1] = res[-1]+ ss[i]
       else:
         res += [ss[i]]
     return res
 
-  def breakByPeriods(self, text, max_len=100):
+  def breakByPeriods(self, text):
     
     ss = re.split(r'\.[ \n]', text)
     #ss = ss[:-1]
     ss = [s+ r". " for s in ss if len(s)>3]
-    print(text)
+    #print(text)
     res = [] #ss[0]]
     for i in range(len(ss)):
-      if len(ss[i])>max_len:
+      if len(ss[i])>self.max_len:
         res += self.breakByCommas(ss[i])
         #res += [ss[i]]
         continue
-      if res and len(res[-1]) + 2 + len(ss[i]) < max_len:
+      if res and len(res[-1]) + 2 + len(ss[i]) < self.max_len:
         res[-1] = res[-1] + ss[i] #+ r". "
       else:
         res += [ss[i]]
     return res
 
-  def breakByParagraphs(self, text, max_len=100):
+  def breakByParagraphs(self, text):
     #ss = re.split(r'(?:\.? +)?\n+', text) 
     
     ss = re.split(r'(?: +)?\n{2,}', text) 
     #ss = [s+ "\n" for s in ss]
-    print(ss)
+    #print(ss)
     res = [] #ss[0]]
     for i in range(len(ss)):
-      if ss and len(ss[i])>max_len:
+      if ss and len(ss[i])>self.max_len:
         res += self.breakByPeriods(ss[i])
         #res += [ss[i]]
         #continue
@@ -323,7 +328,7 @@ class Chunker:
     return [r for r in res if len(r)>3]
 
 
-  def split_text_into_chunks(self, text, max_length=100):
+  def split_text_into_chunks(self, text):
       ## temporary hack for citation shit
       text = re.sub(" ([\.,])", r"\g<1>", text)
 
@@ -334,14 +339,14 @@ class Chunker:
       
       #print(text)
 
-      self.chunks =  self.breakByParagraphs(text, max_len=max_length)
+      self.chunks =  self.breakByParagraphs(text)
 
-  def get_test_batch(self, chunks = 20):
-    return self.chunks[:chunks]
+  def get_test_batch(self, chunks = 20, start = 0):
+    return self.chunks[start:start+chunks]
 
   def save_chunks_as_text(self, filename, chunks):
     with open(filename, 'w+') as f: 
-      f.write(r"".join(chunks))
+      f.write("\n|".join(chunks))
 
 
 
@@ -360,8 +365,11 @@ class Narrator:
 
   def loadModels(self):
     # Load SpeechBrain models
-    self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="checkpoints/tacotron2")
-    self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="checkpoints/hifigan")
+    self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", 
+                                            savedir="checkpoints/tacotron2",
+                                            overrides={"max_decoder_steps": 2000})
+    self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", 
+                                         savedir="checkpoints/hifigan")
 
 
   def orderUnorder(self,chunks, itemFn = len, reverse=True):
@@ -388,6 +396,17 @@ class Narrator:
     return self.tacotron2.text_to_seq(item)[1] 
 
 
+  def add_pauses(self, ordered, mel_lengths, pause_dur = 40):
+    # add pause between paragraphs
+    mml = torch.ones_like(mel_lengths) * max(mel_lengths)
+    
+    pause = torch.tensor([ pause_dur if "\n\n" in c else 0 for c in ordered])
+
+    mel_lengths += pause
+    mel_lengths =  torch.min(mel_lengths, mml)
+    return mel_lengths
+    #[min(mml,ml + p) for ml,p in zip(mel_lengths, pause)] 
+
   def text_to_speech(self, chunks):      
 
       #  must  sort chunks by length descending
@@ -401,20 +420,15 @@ class Narrator:
       print("run tacotron")
       mel_outputs, mel_lengths, alignments = self.tacotron2.encode_batch(ordered)
            
+      if self.tacotron2.hparams.max_decoder_steps in mel_lengths:
+        Warning("We probably have truncated chunks")
 
       print("run vocoder")
       hop_len = 256
       waveforms = self.hifi_gan.decode_batch(mel_outputs, mel_lengths, hop_len).squeeze(1)
 
       print("adding pauses")
-      # add pause between paragraphs
-      mml = torch.ones_like(mel_lengths) * max(mel_lengths)
-      pause_dur = 40
-      pause = torch.tensor([ pause_dur if "\n\n" in c else 0 for c in ordered])
-
-      mel_lengths += pause
-      mel_lengths =  torch.min(mel_lengths, mml)
-      #[min(mml,ml + p) for ml,p in zip(mel_lengths, pause)] 
+      mel_lengths = self.add_pauses(ordered, mel_lengths, pause_dur = 40)
 
       print("recombine")
       # turn into array
@@ -426,9 +440,10 @@ class Narrator:
       # restore order 
       arr = [arr[i] for i in unorder]
 
-      waveform = torch.cat(arr, dim=1)
+      mel_lengths = mel_lengths.detach().numpy()
+      mel_lengths = [mel_lengths[i] for i in unorder]
 
-      return waveform, order, alignments
+      return arr, mel_lengths, hop_len
 
 
   def save_audio(self, output_wav, waveform):
@@ -440,7 +455,7 @@ class Narrator:
 def main():
 
   input_file = "data/arXiv-2106.04624v1/main.tex"
-  output_file = "output/03.12.24_01"
+  output_file = "output/" + dt.now().strftime(r"%y.%m.%d-%H")
 
   parser = LatexParser()
   content = parser.read_latex(input_file)
@@ -451,15 +466,20 @@ def main():
   parser.save_text(tables, "dbg/tables.tex")
 
 
-  chunker = Chunker()
+  chunker = Chunker(max_len=300)
   chunker.split_text_into_chunks(processed)
-  chunks = chunker.get_test_batch(100)
+  chunks = chunker.get_test_batch(50,0)
   #chunks = chunker.chunks
   chunker.save_chunks_as_text(output_file + ".md", chunks)
-
+  print("text chunks:", [len(ch) for ch in chunks])
   
   narrator = Narrator()
-  waveform, order, alignments = narrator.text_to_speech(chunks)  
+  waveforms, mel_lengths, hop_len = narrator.text_to_speech(chunks)  
+
+  
+  print ("mel_lengths: ", mel_lengths, hop_len)
+
+  waveform = torch.cat(waveforms, dim=1)
 
   print("saving audio")
   narrator.save_audio(output_file + ".wav", waveform)
