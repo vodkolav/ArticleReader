@@ -1,0 +1,8 @@
+- [ ] measure dependency of memory taken by sonograms on text length
+- [ ] how to check available memory of each worker in cluster
+- [ ] check whether and how we can run pytorch (on gpu) models on spark 
+- [ ] how to dynamically feed batches to spark 
+- [ ] how to convert to mp3 on spark 
+- [ ] build presentation 
+- [ ] invite everyoner to repo
+- [ ] open project 

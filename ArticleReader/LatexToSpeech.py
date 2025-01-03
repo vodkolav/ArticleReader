@@ -6,7 +6,7 @@ import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 import numpy as np 
 import re
-from datetime import datetime as dt
+from datetime import datetime, timedelta
 from NodesVisitor import Extractor
 
 
@@ -362,6 +362,7 @@ class Chunker:
 class Narrator:
   def __init__(self):
      self.loadModels()
+     self.hop_len = 256
 
   def loadModels(self):
     # Load SpeechBrain models
@@ -446,16 +447,130 @@ class Narrator:
       return arr, mel_lengths, hop_len
 
 
+  def infer(self, batch):
+      # incoming: batch of chunks (~sentences)
+      print("run tacotron")
+      mel_outputs, mel_lengths, alignments = self.tacotron2.encode_batch(batch)
+           
+      if self.tacotron2.hparams.max_decoder_steps in mel_lengths:
+        Warning("We probably have truncated chunks")
+
+      print("run vocoder")
+
+      waveforms = self.hifi_gan.decode_batch(mel_outputs, mel_lengths, self.hop_len)# .squeeze(1)
+      #out: batch of waveforms, mel_lengths
+      return waveforms, mel_lengths
+
+  def batch(self, iterable, n=1):
+      l = len(iterable)
+      for ndx in range(0, l, n):
+          yield iterable[ndx:min(ndx + n, l)]
+
+
+  def text_to_speech_batched(self, chunks):      
+
+      #  must  sort chunks by length descending
+
+      order, unorder = self.orderUnorder(chunks, self.seq_len)
+
+      ordered = [chunks[i] for i in order]
+
+      ordered_wf = [] #torch.tensor([])
+
+      ordered_mel_lens = torch.tensor([])
+
+      batchSize = 50
+
+      for b in self.batch(ordered, batchSize):
+
+        waveforms, mel_lengths = self.infer(b)
+        ordered_wf += waveforms
+        print("adding pauses")
+        mel_lengths = self.add_pauses(b, mel_lengths, pause_dur = 40)
+        ordered_mel_lens  = torch.cat((ordered_mel_lens, mel_lengths))
+
+
+      print("recombine")
+      # turn into array
+      #ordered_wf = torch.tensor_split(ordered_wf, len(order), dim=0)
+
+      #cut padding
+      ordered_wf = [a[:,:l.int()]  for a,l in zip(ordered_wf, ordered_mel_lens * self.hop_len) ]
+
+      # restore order 
+      unordered_wf = [ordered_wf[i] for i in unorder]
+
+      ordered_mel_lens = ordered_mel_lens.detach().numpy()
+      ordered_durations = ordered_mel_lens * self.hop_len
+
+      unordered_durations = ordered_durations[unorder]
+
+      return unordered_wf, unordered_durations, 
+
   def save_audio(self, output_wav, waveform):
     torchaudio.save(output_wav, waveform, 22050, format="wav")
     print(f"Audio saved to {output_wav}")
+
+  def save_video(self, output_file):
+    import os
+    print("\n saving static video")
+    command = f"""
+  ffmpeg -y -loop 1 -i output/image.png -i {output_file}.wav 
+  -c:v libx264 -tune stillimage -c:a aac -b:a 
+  192k -pix_fmt yuv420p -shortest {output_file}.mp4
+  """
+    command = command.replace("\n","")
+    print(command)
+    os.system(command)
+
+    # ffmpeg -loop 1 -i image.png -i 24.12.08-17.wav -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -shortest output.mp4
+    
+
+
+
+def generate_srt(sentences, durations, output_file="output.srt"):
+    """
+    Generates an SRT file from a list of sentences and durations.
+
+    Args:
+        sentences (list of str): The sentences to be shown as subtitles.
+        durations (list of int): Durations (in seconds) for each sentence in chronological order.
+        output_file (str): Path to save the SRT file.
+
+    Returns:
+        None
+    """
+    def format_timestamp(seconds):
+        """Formats seconds into SRT timestamp format."""
+        td = timedelta(seconds=seconds)
+        total_seconds = int(td.total_seconds())
+        milliseconds = int(td.microseconds / 1000)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
+    
+     
+    with open(output_file, "w") as file:
+        current_time = 0  # Start time in seconds
+        for i, (sentence, duration) in enumerate(zip(sentences, durations), start=1):
+            start_time = format_timestamp(current_time)
+            end_time = format_timestamp(current_time + duration)
+            current_time += duration  # Increment time by the duration of the sentence
+            
+            # Write SRT entry
+            file.write(f"{i}\n")
+            file.write(f"{start_time} --> {end_time}\n")
+            file.write(f"{sentence.strip()}\n\n")
+    
+    print(f"SRT file saved to {output_file}")
+
 
 
 
 def main():
 
   input_file = "data/arXiv-2106.04624v1/main.tex"
-  output_file = "output/" + dt.now().strftime(r"%y.%m.%d-%H")
+  output_file = "output/" + datetime.now().strftime(r"%y.%m.%d-%H")
 
   parser = LatexParser()
   content = parser.read_latex(input_file)
@@ -466,23 +581,27 @@ def main():
   parser.save_text(tables, "dbg/tables.tex")
 
 
-  chunker = Chunker(max_len=300)
+  chunker = Chunker(max_len=200)
   chunker.split_text_into_chunks(processed)
-  chunks = chunker.get_test_batch(50,0)
+  chunks = chunker.get_test_batch(200,0)
   #chunks = chunker.chunks
   chunker.save_chunks_as_text(output_file + ".md", chunks)
   print("text chunks:", [len(ch) for ch in chunks])
   
   narrator = Narrator()
-  waveforms, mel_lengths, hop_len = narrator.text_to_speech(chunks)  
-
+  waveforms, durations = narrator.text_to_speech_batched(chunks)  
+  durations_sec = durations / 22050.0
   
-  print ("mel_lengths: ", mel_lengths, hop_len)
+  print ("durations: ", durations_sec)
 
   waveform = torch.cat(waveforms, dim=1)
 
   print("saving audio")
   narrator.save_audio(output_file + ".wav", waveform)
+
+  narrator.save_video(output_file)
+
+  generate_srt(chunks, durations_sec, output_file + ".srt")
 
 
 if __name__ == "__main__":
