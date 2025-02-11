@@ -133,3 +133,4 @@ checkpoints
 dbg
 .obsidian
 **/*.ndz.*
+.virtual_documents

@@ -7,7 +7,7 @@ from speechbrain.inference import Tacotron2, HIFIGAN
 import numpy as np 
 import re
 from datetime import datetime, timedelta
-from NodesVisitor import Extractor
+from ArticleReader.NodesVisitor import Extractor
 
 
 
@@ -168,8 +168,8 @@ class LatexParser:
 
 
   def do_author(n, l2tobj):
-      """Get the text replacement for the macro
-      \putinquotes[open-quote][close-quote]{text}"""
+      """Get the text replacement for the macro 
+      \\putinquotes[open-quote][close-quote]{text}"""
       if not n.nodeargd:
           # n.nodeargd can be empty if e.g. \putinquotes was a single
           # token passed as an argument to a macro,

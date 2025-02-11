@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Variables
+ENV_YAML="pyspark_TTS.yml"
+ENV_NAME="pyspark_TTS"
+
+set -e
+# Path to existing Spark installation
+#SPARK_HOME="/path/to/spark"
+#JAVA_HOME="/path/to/java"
+
+# Create Conda environment from YAML
+echo "Creating Conda environment from $ENV_YAML..."
+#conda env create -v -f $ENV_YAML 
+
+# Activate environment
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate $ENV_NAME  
+
+# Configure env variables to find spark and kafka
+conda env config vars set PATH="/usr/bin":$PATH:/usr/local/spark/spark/bin:/usr/local/kafka/kafka/bin
+conda env config vars set SPARK_HOME=/usr/local/spark/spark
+#export PATH=$PATH:/usr/local/spark/spark/bin
+conda env config vars set KAFKA_HOME=/usr/local/kafka/kafka
+#export PATH=$PATH:/usr/local/kafka/kafka/bin
+conda env config vars set PYSPARK_DRIVER_PYTHON=ipython
+#/home/linuxu/anaconda3/envs/$ENV_NAME/bin/ipython
+#export PYSPARK_DRIVER_PYTHON_OPTS='lab'
+conda env config vars set PYSPARK_PYTHON=/home/linuxu/anaconda3/envs/$ENV_NAME/bin/python
+#export PATH=/usr/local/cuda-11.7/bin${PATH:+:${PATH}}
+#export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+
+
+
+# # Add environment variables to the environment activation script
+# echo "Configuring environment variables..."
+# ENV_ACTIVATE_SCRIPT=$(conda env list | grep $ENV_NAME | awk '{print $2}')/etc/conda/activate.d/env_vars.sh
+# mkdir -p $(dirname $ENV_ACTIVATE_SCRIPT)
+# echo "export SPARK_HOME=$SPARK_HOME" > $ENV_ACTIVATE_SCRIPT
+# #echo "export JAVA_HOME=$JAVA_HOME" >> $ENV_ACTIVATE_SCRIPT
+# echo "export PYSPARK_PYTHON=python" >> $ENV_ACTIVATE_SCRIPT
+# echo "export PYSPARK_DRIVER_PYTHON=python" >> $ENV_ACTIVATE_SCRIPT
+
+
+
+# Register Jupyter kernel
+echo "Registering Jupyter kernel..."
+python -m ipykernel install --name=$ENV_NAME --display-name "Python ($ENV_NAME)" --prefix=/home/linuxu/anaconda3/envs/jupy
+
+# Deactivate environment
+#conda deactivate
+
+echo "Done. Use Jupyter Lab and select the kernel 'Python ($ENV_NAME)'."
+
