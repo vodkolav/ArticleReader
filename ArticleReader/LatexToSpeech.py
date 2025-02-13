@@ -353,10 +353,24 @@ class Chunker:
             f.write(r"".join(chunks))
 
 
+
+
+
 class Narrator:
-    def __init__(self):
+    def __init__(self, profiling=0):
         self.loadModels()
         self.hop_len = 256
+        if profiling:
+            from Benchmarking import MemoryMonitor
+            self.profilers = {}
+            
+            profiler1 = MemoryMonitor()
+            self.tacotron2.encode_batch = profiler1.monitor_memory_decorator(self.tacotron2.encode_batch)
+            self.profilers["tacotron"] = profiler1
+
+            profiler2 = MemoryMonitor()
+            self.hifi_gan.decode_batch = profiler2.monitor_memory_decorator(self.hifi_gan.decode_batch)
+            self.profilers["vocoder"] = profiler2
 
     def loadModels(self):
         # Load SpeechBrain models
