@@ -364,11 +364,11 @@ class Narrator:
             from Benchmarking import MemoryMonitor
             self.profilers = {}
             
-            profiler1 = MemoryMonitor()
+            profiler1 = MemoryMonitor(stage="tts")
             self.tacotron2.encode_batch = profiler1.monitor_memory_decorator(self.tacotron2.encode_batch)
             self.profilers["tacotron"] = profiler1
 
-            profiler2 = MemoryMonitor()
+            profiler2 = MemoryMonitor(stage="vocoder")
             self.hifi_gan.decode_batch = profiler2.monitor_memory_decorator(self.hifi_gan.decode_batch)
             self.profilers["vocoder"] = profiler2
 

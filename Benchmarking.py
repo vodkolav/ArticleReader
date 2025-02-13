@@ -7,16 +7,18 @@ import torch
 from ArticleReader.LatexToSpeech import Narrator, Chunker
 import pandas as pd
 
+
 class MemoryMonitor:
     """
     Instance-based memory monitor to track CPU memory usage during inference.
     Each instance keeps its own memory log.
     """
     
-    def __init__(self):
+    def __init__(self, stage):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
+        self.stage = stage
 
     def monitor_cpu_memory(self, interval):
         process = psutil.Process(os.getpid())
@@ -60,6 +62,7 @@ class Bench:
             
         res = {
             "model_id": "taco",  #(name)
+            "stage": model_profiler.stage,
             "max_memory_use": data['memory'].max(),
             "run_time_sec": dur,
             "memory_log": model_profiler.memory_log,
@@ -70,7 +73,7 @@ class Bench:
 
     def run_experiment(self, processed, case):
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "benchmark/" + tstp        
+        case_file = "benchmark/" + tstp
         
         chunker = Chunker(max_len=case["chunk_length"])
         chunker.split_text_into_chunks(processed)
@@ -86,14 +89,23 @@ class Bench:
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
         waveform = torch.cat(waveforms, dim=1)
         narrator.save_audio(case_file + ".wav", waveform)
-            
+        
         parameters = {
             "time": tstp,
             "experiment_id": tstp,
             "chunk_durations": durations_sec,
-            "avg_percent_silence": perc_sile,
-            "tts_model": self.per_model(narrator.profilers['tacotron']),
-            "vocoder_model": self.per_model(narrator.profilers['vocoder'])
+            "avg_percent_silence": perc_sile
         }
         case.update(parameters)
-        return case
+        
+        tts_stage = self.per_model(narrator.profilers['tacotron'])
+        tts_stage.update(case)
+        
+        voc_stage = self.per_model(narrator.profilers['vocoder'])
+        voc_stage.update(case)
+
+        return [tts_stage, voc_stage]
+
+
+
+                                   
