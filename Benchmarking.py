@@ -3,8 +3,9 @@ from datetime import datetime
 import threading
 import psutil
 import os
+from ArticleReader.Narrator import Narrator
 import torch
-from ArticleReader.LatexToSpeech import Narrator, Chunker
+from ArticleReader.LatexToSpeech import Chunker
 import pandas as pd
 
 
@@ -75,20 +76,21 @@ class Bench:
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
         case_file = "benchmark/" + tstp
         
-        chunker = Chunker(max_len=case["chunk_length"])
-        chunker.split_text_into_chunks(processed)
+        self.chunker = Chunker(max_len=case["chunk_length"])
+        self.chunker.split_text_into_chunks(processed)
         
         fr = 0 # beginning from chunk
-        chunks = chunker.get_test_batch(case["batch_size"], fr)
+        chunks = self.chunker.get_test_batch(case["batch_size"], fr)        
+        self.chunker.save_chunks_as_text(case_file + ".md", chunks)
         
-        chunker.save_chunks_as_text(case_file + ".md", chunks)
+        self.narrator = Narrator(profiling=1) # TODO: define model 
+        waveforms, durations = self.narrator.text_to_speech_batched(chunks)
+        waveform = torch.cat(waveforms, dim=1)
+        self.narrator.save_audio(case_file + ".wav", waveform)
         
-        narrator = Narrator(profiling=1) # TODO: define model 
-        waveforms, durations = narrator.text_to_speech_batched(chunks)
         durations_sec = (durations / 22050.0).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
-        waveform = torch.cat(waveforms, dim=1)
-        narrator.save_audio(case_file + ".wav", waveform)
+
         
         parameters = {
             "time": tstp,
@@ -98,10 +100,10 @@ class Bench:
         }
         case.update(parameters)
         
-        tts_stage = self.per_model(narrator.profilers['tacotron'])
+        tts_stage = self.per_model(self.narrator.profilers['tacotron'])
         tts_stage.update(case)
         
-        voc_stage = self.per_model(narrator.profilers['vocoder'])
+        voc_stage = self.per_model(self.narrator.profilers['vocoder'])
         voc_stage.update(case)
 
         return [tts_stage, voc_stage]
