@@ -4,20 +4,10 @@ import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 
 class Narrator:
-    def __init__(self, tts_model = None, vocoder_model = None,  profiling=0):
+    def __init__(self, tts_model = None, vocoder_model = None):
         self.loadModels(tts_model, vocoder_model)
         self.hop_len = 256 # this should be coming from model hparams
-        if profiling:
-            from Benchmarking import MemoryMonitor
-            #self.profilers = {}
 
-            self.tts_profiler = MemoryMonitor(stage="tts", model_id=self.tts.id)
-            self.tts.encode_batch = self.tts_profiler.monitor_memory_decorator(self.tts.encode_batch)
-            #self.profilers["tacotron"] = self.tts_profiler # TODO: changfe to "tts"
-
-            self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=self.vocoder.id)
-            self.vocoder.decode_batch = self.vocoder_profiler.monitor_memory_decorator(self.vocoder.decode_batch)
-            #self.profilers["vocoder"] = self.vocoder_profiler
 
     def loadModels(self, tts_model, vocoder_model):
         # Load SpeechBrain models

@@ -9,6 +9,7 @@ from ArticleReader.LatexToSpeech import Chunker
 import pandas as pd
 from speechbrain.inference import Tacotron2, HIFIGAN
 
+
 class MemoryMonitor:
     """
     Instance-based memory monitor to track CPU memory usage during inference.
@@ -30,7 +31,7 @@ class MemoryMonitor:
             self.memory_log.append({"time": time.time(), "memory": current_memory})
             time.sleep(interval)
 
-    def monitor_memory_decorator(self, forward_func):
+    def attach_to(self, forward_func):
         def wrapper(model, *args, **kwargs):
             self.memory_log.clear()  # Clear previous logs
             interval = 0.1
@@ -114,8 +115,14 @@ class Bench:
             )
         vocoder_model.id = model_name
 
+        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
+        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
 
-        self.narrator = Narrator(tts_model, vocoder_model, profiling=1) 
+        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
+        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
+        
+
+        self.narrator = Narrator(tts_model, vocoder_model) 
         waveforms, durations = self.narrator.text_to_speech_batched(chunks)
         waveform = torch.cat(waveforms, dim=1)
         self.narrator.save_audio(case_file + ".wav", waveform)
@@ -133,10 +140,10 @@ class Bench:
         }
         case.update(parameters)
         
-        tts_stage = self.summarize_profile(self.narrator.tts_profiler)
+        tts_stage = self.summarize_profile(self.tts_profiler)
         tts_stage.update(case)
         
-        voc_stage = self.summarize_profile(self.narrator.vocoder_profiler)
+        voc_stage = self.summarize_profile(self.vocoder_profiler)
         voc_stage.update(case)
 
         return [tts_stage, voc_stage]
