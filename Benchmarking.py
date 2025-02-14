@@ -15,16 +15,18 @@ class MemoryMonitor:
     Each instance keeps its own memory log.
     """
     
-    def __init__(self, stage):
+    def __init__(self, stage, model_id):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
         self.stage = stage
+        self.model_id = model_id
 
     def monitor_cpu_memory(self, interval):
         process = psutil.Process(os.getpid())
         while not self.stop_event.is_set():
             current_memory = process.memory_info().rss
+            # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(), "memory": current_memory})
             time.sleep(interval)
 
@@ -52,7 +54,7 @@ class MemoryMonitor:
 
 class Bench:
 
-    def per_model(self, model_profiler):
+    def summarize_profile(self, model_profiler):
         data = pd.DataFrame(model_profiler.memory_log)
         data['time'] = pd.to_datetime(data['time'], unit='s')
         if len(data.time)>0:
@@ -62,7 +64,7 @@ class Bench:
             dur=0
             
         res = {
-            "model_id": "taco",  #(name)
+            "model_id": model_profiler.model_id ,  #(name)
             "stage": model_profiler.stage,
             "max_memory_use": data['memory'].max(),
             "run_time_sec": dur,
@@ -102,6 +104,7 @@ class Bench:
                 overrides={"max_decoder_steps": 2000},
                 run_opts={"device":dev} 
         )
+        tts_model.id = model_name
 
         model_name = case["vocoder_model"]
         vocoder_model = self.vocoder = HIFIGAN.from_hparams(
@@ -109,6 +112,7 @@ class Bench:
                 savedir=f"checkpoints/{model_name}",
                 run_opts={"device":dev} 
             )
+        vocoder_model.id = model_name
 
 
         self.narrator = Narrator(tts_model, vocoder_model, profiling=1) 
@@ -129,10 +133,10 @@ class Bench:
         }
         case.update(parameters)
         
-        tts_stage = self.per_model(self.narrator.profilers['tacotron'])
+        tts_stage = self.summarize_profile(self.narrator.tts_profiler)
         tts_stage.update(case)
         
-        voc_stage = self.per_model(self.narrator.profilers['vocoder'])
+        voc_stage = self.summarize_profile(self.narrator.vocoder_profiler)
         voc_stage.update(case)
 
         return [tts_stage, voc_stage]
