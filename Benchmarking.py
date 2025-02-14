@@ -7,7 +7,7 @@ from ArticleReader.Narrator import Narrator
 import torch
 from ArticleReader.LatexToSpeech import Chunker
 import pandas as pd
-
+from speechbrain.inference import Tacotron2, HIFIGAN
 
 class MemoryMonitor:
     """
@@ -73,6 +73,14 @@ class Bench:
         return res
 
     def run_experiment(self, processed, case):
+        """
+        case = {"device": "CPU", 
+                "tts_model": "tts-tacotron2-ljspeech",
+                "vocoder_model": "tts-hifigan-ljspeech",
+                "batch_size": 2, 
+                "chunk_length": 50 
+       }
+        """
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
         case_file = "benchmark/" + tstp
         
@@ -83,12 +91,33 @@ class Bench:
         chunks = self.chunker.get_test_batch(case["batch_size"], fr)        
         self.chunker.save_chunks_as_text(case_file + ".md", chunks)
         
-        self.narrator = Narrator(profiling=1) # TODO: define model 
+        provider = "speechbrain"
+
+        dev = "cuda" if case["device"]=="GPU" else "cpu"
+
+        model_name = case["tts_model"]
+        tts_model = Tacotron2.from_hparams(
+                source=f"{provider}/{model_name}",
+                savedir=f"checkpoints/{model_name}",
+                overrides={"max_decoder_steps": 2000},
+                run_opts={"device":dev} 
+        )
+
+        model_name = case["vocoder_model"]
+        vocoder_model = self.vocoder = HIFIGAN.from_hparams(
+                source=f"{provider}/{model_name}",
+                savedir=f"checkpoints/{model_name}",
+                run_opts={"device":dev} 
+            )
+
+
+        self.narrator = Narrator(tts_model, vocoder_model, profiling=1) 
         waveforms, durations = self.narrator.text_to_speech_batched(chunks)
         waveform = torch.cat(waveforms, dim=1)
         self.narrator.save_audio(case_file + ".wav", waveform)
         
-        durations_sec = (durations / 22050.0).tolist()
+        sampling_freq = 22050.0
+        durations_sec = (durations / sampling_freq).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
 
         

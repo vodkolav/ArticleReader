@@ -1,35 +1,46 @@
 
 import torch
-
-from datetime import datetime, timedelta
-from ArticleReader.NodesVisitor import Extractor
+import torchaudio
+from speechbrain.inference import Tacotron2, HIFIGAN
 
 class Narrator:
-    def __init__(self, profiling=0):
-        self.loadModels()
+    def __init__(self, tts_model = None, vocoder_model = None,  profiling=0):
+        self.loadModels(tts_model, vocoder_model)
         self.hop_len = 256
         if profiling:
             from Benchmarking import MemoryMonitor
             self.profilers = {}
 
             profiler1 = MemoryMonitor(stage="tts")
-            self.tacotron2.encode_batch = profiler1.monitor_memory_decorator(self.tacotron2.encode_batch)
+            self.tts.encode_batch = profiler1.monitor_memory_decorator(self.tts.encode_batch)
             self.profilers["tacotron"] = profiler1
 
             profiler2 = MemoryMonitor(stage="vocoder")
-            self.hifi_gan.decode_batch = profiler2.monitor_memory_decorator(self.hifi_gan.decode_batch)
+            self.vocoder.decode_batch = profiler2.monitor_memory_decorator(self.vocoder.decode_batch)
             self.profilers["vocoder"] = profiler2
 
-    def loadModels(self):
+    def loadModels(self, tts_model, vocoder_model):
         # Load SpeechBrain models
-        self.tacotron2 = Tacotron2.from_hparams(
-            source="speechbrain/tts-tacotron2-ljspeech",
-            savedir="checkpoints/tacotron2",
-            overrides={"max_decoder_steps": 2000},
-        )
-        self.hifi_gan = HIFIGAN.from_hparams(
-            source="speechbrain/tts-hifigan-ljspeech", savedir="checkpoints/hifigan"
-        )
+        provider = "speechbrain"
+        if tts_model is None: #load defalt mopdel
+            model_name = "tts-tacotron2-ljspeech"
+            self.tts = Tacotron2.from_hparams(
+                source=f"{provider}/{model_name}",
+                savedir=f"checkpoints/{model_name}",
+                overrides={"max_decoder_steps": 2000},
+            )
+        else:
+            self.tts = tts_model
+
+        if vocoder_model is None: #load defalt mopdel    
+            model_name = "tts-hifigan-ljspeech"
+            self.vocoder = HIFIGAN.from_hparams(
+                source=f"{provider}/{model_name}",
+                savedir=f"checkpoints/{model_name}"
+            )
+        else: 
+            self.vocoder = vocoder_model
+
 
     def orderUnorder(self, chunks, itemFn=len, reverse=True):
         """sort a list while preserving  info for restoring original order
@@ -53,7 +64,7 @@ class Narrator:
         return order, unorder
 
     def seq_len(self, item):
-        return self.tacotron2.text_to_seq(item)[1]
+        return self.tts.text_to_seq(item)[1]
 
     def add_pauses(self, ordered, mel_lengths, pause_dur=40):
         # add pause between paragraphs
@@ -77,14 +88,14 @@ class Narrator:
         # print(ordered)
         # return ordered, ordered, ordered
         print("run tacotron")
-        mel_outputs, mel_lengths, alignments = self.tacotron2.encode_batch(ordered)
+        mel_outputs, mel_lengths, alignments = self.tts.encode_batch(ordered)
 
-        if self.tacotron2.hparams.max_decoder_steps in mel_lengths:
+        if self.tts.hparams.max_decoder_steps in mel_lengths:
             Warning("We probably have truncated chunks")
 
         print("run vocoder")
         hop_len = 256
-        waveforms = self.hifi_gan.decode_batch(
+        waveforms = self.vocoder.decode_batch(
             mel_outputs, mel_lengths, hop_len
         ).squeeze(1)
 
@@ -109,14 +120,14 @@ class Narrator:
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
         print("run tacotron")
-        mel_outputs, mel_lengths, alignments = self.tacotron2.encode_batch(batch)
+        mel_outputs, mel_lengths, alignments = self.tts.encode_batch(batch)
 
-        if self.tacotron2.hparams.max_decoder_steps in mel_lengths:
+        if self.tts.hparams.max_decoder_steps in mel_lengths:
             Warning("We probably have truncated chunks")
 
         print("run vocoder")
 
-        waveforms = self.hifi_gan.decode_batch(
+        waveforms = self.vocoder.decode_batch(
             mel_outputs, mel_lengths, self.hop_len
         )  # .squeeze(1)
         # out: batch of waveforms, mel_lengths

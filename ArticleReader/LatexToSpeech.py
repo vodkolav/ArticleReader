@@ -7,7 +7,6 @@ import re
 from datetime import datetime, timedelta
 from ArticleReader.NodesVisitor import Extractor
 
-
 class LatexParser:
     #
     # Define macros, environments, specials for the *parser*
