@@ -5,7 +5,7 @@ import psutil
 import os
 from ArticleReader.Narrator import Narrator
 import torch
-from ArticleReader.LatexToSpeech import Chunker
+from ArticleReader.Chunker import Chunker
 import pandas as pd
 from speechbrain.inference import Tacotron2, HIFIGAN
 import json
@@ -192,6 +192,7 @@ class Bench:
                                 json.dump(experiment_run,f)
 
     def init_batch(self, batch_size):
+        #TODO: take batches of sorted chunks
         fr = 25 # beginning from chunk
         batch = self.chunker.get_test_batch(batch_size, fr)        
                           
@@ -243,7 +244,7 @@ class Bench:
 
         sampling_freq = 22050.0
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "benchmark/" + tstp
+        case_file = "output/" + tstp
 
         device = self.case_objects["device"]
         tts_model = self.case_objects["tts_model"]
