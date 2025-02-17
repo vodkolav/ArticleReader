@@ -246,7 +246,7 @@ def main():
 
     narrator.save_video(output_file)
 
-    generate_srt(chunks, durations_sec, output_file + ".srt")
+    narrator.generate_srt(chunks, durations_sec, output_file + ".srt")
 
 
 if __name__ == "__main__":

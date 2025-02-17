@@ -1,6 +1,6 @@
 import numpy as np
 import re
-
+import pandas as pd
 
 class Chunker:
     # Split simple text into chunks
@@ -123,7 +123,17 @@ class Chunker:
 
         # print(text)
 
-        self.chunks = self.breakByParagraphs(text)
+        rawchunks = self.breakByParagraphs(text)
+        self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
+        self.chunks["text_len"] = self.chunks.sentence.str.len()
+
+
+    def get_batch_sorted(self, batch_size = 3, start=0):
+        self.chunks.sort_values("text_len", ascending=False, inplace=True)        
+        return self.chunks.iloc[start : start +batch_size].copy()
+        
+    def get_batch_chronological(self, batch_size = 3, start=0):                    
+        return self.chunks.iloc[start : start +batch_size].copy()
 
     def get_test_batch(self, chunks=20, start=0):
         return self.chunks[start : start + chunks]

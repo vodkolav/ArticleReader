@@ -3,6 +3,7 @@ import torch
 import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 from datetime import timedelta
+import pandas as pd
 
 class Narrator:
     def __init__(self, tts_model = None, vocoder_model = None):
@@ -59,6 +60,7 @@ class Narrator:
 
     def add_pauses(self, ordered, mel_lengths, pause_dur=40):
         # add pause between paragraphs
+        # TODO: implement different pauses and other prosody for different cases 
         mml = torch.ones_like(mel_lengths) * max(mel_lengths)
 
         pause = torch.tensor([pause_dur if "\n\n" in c else 0 for c in ordered])
@@ -68,27 +70,44 @@ class Narrator:
         return mel_lengths
         # [min(mml,ml + p) for ml,p in zip(mel_lengths, pause)]
 
-    def text_to_speech(self, chunks):
+    def text_to_speech_df(self, batch_df):# (self, batch_df: pd.DataFrame):
+
+        # ensure sentences are sorted by seq_len
+        batch_df.loc[:,"seq_len"] = batch_df.sentence.map(self.seq_len)
+        batch_df.sort_values("seq_len", ascending=False, inplace=True)
+        
+        # TODO: ensure batch_df has column index for restoration of order later 
+        #       ensure batch_df is a proper DF, not a view of another DF
+
+        waveforms, mel_lengths = self.infer(batch_df.sentence)
+        
+        # defining pauses between paragraphs                
+        mel_lengths = self.add_pauses(batch_df.sentence, mel_lengths, pause_dur=40)        
+
+        # turning tensor into regular array
+        arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
+
+        # TODO: something fishy is going on here. the [b,1,smaples] tensor is cut into
+        # array of 0-dim tensors. might affect performance, need to check that
+
+        # cut padding
+        arr = [a[:, :l] for a, l in zip(arr, mel_lengths * self.hop_len)]
+        
+        mel_lengths = mel_lengths.detach().numpy()
+        batch_df["waveform"] = arr
+        batch_df["mel_lengths"] = mel_lengths
+        batch_df["durations_sec"] = mel_lengths / 22050.0
+        return batch_df
+
+    def text_to_speech(self, batch):
 
         #  must  sort chunks by length descending
 
-        order, unorder = self.orderUnorder(chunks, self.seq_len)
+        order, unorder = self.orderUnorder(batch, self.seq_len)
 
-        ordered = [chunks[i] for i in order]
+        ordered = [batch[i] for i in order]
 
-        # print(ordered)
-        # return ordered, ordered, ordered
-        print("run tacotron")
-        mel_outputs, mel_lengths, alignments = self.tts.encode_batch(ordered)
-
-        if self.tts.hparams.max_decoder_steps in mel_lengths:
-            Warning("We probably have truncated chunks")
-
-        print("run vocoder")
-        hop_len = 256
-        waveforms = self.vocoder.decode_batch(
-            mel_outputs, mel_lengths, hop_len
-        ).squeeze(1)
+        waveforms, mel_lengths = self.infer(batch)
 
         print("adding pauses")
         mel_lengths = self.add_pauses(ordered, mel_lengths, pause_dur=40)
@@ -98,7 +117,7 @@ class Narrator:
         arr = torch.tensor_split(waveforms, len(order), dim=0)
 
         # cut padding
-        arr = [a[:, :l] for a, l in zip(arr, mel_lengths * hop_len)]
+        arr = [a[:, :l] for a, l in zip(arr, mel_lengths * self.hop_len)]
 
         # restore order
         arr = [arr[i] for i in unorder]
@@ -106,7 +125,7 @@ class Narrator:
         mel_lengths = mel_lengths.detach().numpy()
         mel_lengths = [mel_lengths[i] for i in unorder]
 
-        return arr, mel_lengths, hop_len
+        return arr, mel_lengths, self.hop_len
 
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)

@@ -185,17 +185,19 @@ class Bench:
 
 
                             print(f"running experiment:\n {json.dumps(self.case)}")
-                            wat = json.dumps(self.case_objects["batch_size"])
-                            print(f"test data:\n {wat}")
+                            
+                            #wat = json.dumps(self.case_objects["batch_size"])
+                            #print(f"test data:\n {wat}")
                             experiment_run = self.run_case()
                             with open("benchmark/" + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
                                 json.dump(experiment_run,f)
 
     def init_batch(self, batch_size):
-        #TODO: take batches of sorted chunks
-        fr = 25 # beginning from chunk
-        batch = self.chunker.get_test_batch(batch_size, fr)        
-                          
+        # take batches of sorted chunks
+        fr = 0 # beginning from chunk              
+        batch = self.chunker.get_batch_sorted(batch_size, fr)    
+
+        #batch = self.chunker.get_test_batch(batch_size, fr)        
         self.case_objects["batch_size"] = batch
         self.case["batch_size"] = batch_size
 
@@ -252,22 +254,26 @@ class Bench:
         chunk_length = self.case_objects["chunk_length"]
         batch= self.case_objects["batch_size"]
 
+        # TTS
+        self.narrator = Narrator(tts_model, vocoder_model)         
+        batch_converted = self.narrator.text_to_speech_df(batch)
 
-        self.narrator = Narrator(tts_model, vocoder_model) 
-        waveforms, durations = self.narrator.text_to_speech_batched(batch)
-        waveform = torch.cat(waveforms, dim=1)
+        # restore order of sentences
+        batch_converted.sort_values("index", ascending=True, inplace=True)
+        # recombine and save sound
+        waveform = torch.cat(tuple(batch_converted.waveform), dim=1)
         self.narrator.save_audio(case_file + ".wav", waveform)
-
         self.chunker.save_chunks_as_text(case_file + ".md", batch)
 
         # create a report
-        durations_sec = (durations / sampling_freq).tolist()
+        durations = batch_converted.durations_sec
+        #durations_sec = (durations / sampling_freq).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
         
         result = {
             "time": tstp,
             "experiment_id": tstp,
-            "chunk_durations": durations_sec,
+            "chunk_durations": list(durations),
             "avg_percent_silence": perc_sile
         }
         result.update(self.case)
