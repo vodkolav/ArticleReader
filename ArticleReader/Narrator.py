@@ -129,17 +129,22 @@ class Narrator:
 
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
-        print("run tacotron")
+        print("     running TTS model")
         mel_outputs, mel_lengths, alignments = self.tts.encode_batch(batch)
-
+        print("     TTS model finished")
         if self.tts.hparams.max_decoder_steps in mel_lengths:
             Warning("We probably have truncated chunks")
 
-        print("run vocoder")
+        print("     run vocoder model")
 
         waveforms = self.vocoder.decode_batch(
             mel_outputs, mel_lengths, self.hop_len
         )  # .squeeze(1)
+        if waveforms is None:
+            print("     vocoder failed. returning silence")
+            # return zeros tensor of expected size
+            waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
+        print("     vocoder model finished")
         # out: batch of waveforms, mel_lengths
         return waveforms, mel_lengths
 

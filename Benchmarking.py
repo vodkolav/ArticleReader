@@ -26,7 +26,8 @@ class MemoryMonitor:
     def monitor_cpu_memory(self, interval):
         process = psutil.Process(os.getpid())
         while not self.stop_event.is_set():
-            current_memory = process.memory_info().rss
+            children_memory = sum(p.memory_info().rss for p in process.children(recursive=True))
+            current_memory = children_memory + process.memory_info().rss
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(), "memory": current_memory})
             time.sleep(interval)
@@ -42,7 +43,7 @@ class MemoryMonitor:
             try:
                 output = forward_func(model, *args, **kwargs)  # Run the original forward pass
             except Exception as e:
-                self.exception = e.message
+                self.exception = str(e)
                 output = None
             # Stop monitoring
             finally:
@@ -189,8 +190,10 @@ class Bench:
                             #wat = json.dumps(self.case_objects["batch_size"])
                             #print(f"test data:\n {wat}")
                             experiment_run = self.run_case()
+                            print("saving benchmark data")
                             with open("benchmark/" + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
-                                json.dump(experiment_run,f)
+                                json.dump(experiment_run,f, indent=4)
+        print("experiment complete.")
 
     def init_batch(self, batch_size):
         # take batches of sorted chunks
@@ -254,22 +257,39 @@ class Bench:
         chunk_length = self.case_objects["chunk_length"]
         batch= self.case_objects["batch_size"]
 
+        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
+        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
+
+        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
+        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
+
         # TTS
-        self.narrator = Narrator(tts_model, vocoder_model)         
+        self.narrator = Narrator(tts_model, vocoder_model)        
+        print(" Running text_to_speech_df") 
         batch_converted = self.narrator.text_to_speech_df(batch)
+        print(" Done Running text_to_speech_df") 
 
         # restore order of sentences
+        print("restore order of sentences")
         batch_converted.sort_values("index", ascending=True, inplace=True)
+
         # recombine and save sound
+        print("recombine batch")
         waveform = torch.cat(tuple(batch_converted.waveform), dim=1)
+
+        print("saving sound")
         self.narrator.save_audio(case_file + ".wav", waveform)
+        print("done saving sound")
+
         self.chunker.save_chunks_as_text(case_file + ".md", batch)
 
         # create a report
+        print("creating report")
         durations = batch_converted.durations_sec
         #durations_sec = (durations / sampling_freq).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
         
+        print("writing results")
         result = {
             "time": tstp,
             "experiment_id": tstp,
@@ -278,9 +298,11 @@ class Bench:
         }
         result.update(self.case)
         
+        print("combining tts_profiler results")
         tts_stage = self.summarize_profile(self.tts_profiler)
         tts_stage.update(result)
         
+        print("combining vocoder_profiler results")
         voc_stage = self.summarize_profile(self.vocoder_profiler)
         voc_stage.update(result)
 

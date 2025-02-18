@@ -132,6 +132,7 @@ output
 benchmark
 trash
 checkpoints
+iframe_figures
 dbg
 .obsidian
 **/*.ndz.*
