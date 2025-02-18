@@ -9,27 +9,53 @@ from ArticleReader.Chunker import Chunker
 import pandas as pd
 from speechbrain.inference import Tacotron2, HIFIGAN
 import json
+import resource
 
 class MemoryMonitor:
     """
     Instance-based memory monitor to track CPU memory usage during inference.
-    Each instance keeps its own memory log.
+    Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
     
-    def __init__(self, stage, model_id):
+    def __init__(self, stage, model_id, max_memory_mb):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
         self.stage = stage
         self.model_id = model_id
+        self.process = psutil.Process(os.getpid())
+        self.max_memory_mb = max_memory_mb
+        self.last_process_count = 0
+
+    def set_memory_limit(self):
+        """Estimate process count and apply memory limits only if needed."""
+        try:
+            all_processes = self.process.children(recursive=True) + [self.process]
+            num_processes = max(1, len(all_processes))
+            per_process_limit = (self.max_memory_mb // num_processes) * 1024 * 1024
+            
+            # Update limits only if the number of processes has changed significantly
+            if abs(num_processes - self.last_process_count) / max(1, self.last_process_count) > 0.2:
+                self.last_process_count = num_processes
+                for p in all_processes:
+                    try:
+                        resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
+                    except Exception:
+                        pass  # Ignore permission errors
+        except Exception:
+            pass  # Ignore rare process termination errors
 
     def monitor_cpu_memory(self, interval):
-        process = psutil.Process(os.getpid())
         while not self.stop_event.is_set():
-            children_memory = sum(p.memory_info().rss for p in process.children(recursive=True))
-            current_memory = children_memory + process.memory_info().rss
+            children_memory = sum(p.memory_info().rss for p in self.process.children(recursive=True))
+            current_memory = children_memory + self.process.memory_info().rss
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(), "memory": current_memory})
+
+            # Check process count every 5 seconds and adjust if needed
+            if len(self.memory_log) % int(5 / interval) == 0:
+                self.set_memory_limit()
+            
             time.sleep(interval)
 
     def attach_to(self, forward_func):
@@ -37,9 +63,13 @@ class MemoryMonitor:
             self.memory_log.clear()  # Clear previous logs
             interval = 0.1
             
+            # Set initial memory limit
+            self.set_memory_limit()
+            
             # Start the CPU memory monitoring thread.
             monitor_thread = threading.Thread(target=self.monitor_cpu_memory, args=(interval,))
             monitor_thread.start()
+            
             try:
                 output = forward_func(model, *args, **kwargs)  # Run the original forward pass
             except Exception as e:
@@ -47,6 +77,7 @@ class MemoryMonitor:
                 output = None
             # Stop monitoring
             finally:
+                # Ensure monitoring stops even if an exception occurs
                 self.stop_event.set()
                 monitor_thread.join()
             
