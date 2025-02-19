@@ -17,20 +17,31 @@ class MemoryMonitor:
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
     
-    def __init__(self, stage, model_id, max_memory_mb):
+    def __init__(self, stage, model_id):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
         self.stage = stage
         self.model_id = model_id
         self.process = psutil.Process(os.getpid())
-        self.max_memory_mb = max_memory_mb
+        self.max_memory_mb = 20000 # 40000
         self.last_process_count = 0
 
-    def set_memory_limit(self):
+    def get_process_group(self):
+        pgid = os.getpgid(os.getpid())
+        group = []
+        for p in psutil.process_iter():
+            try:
+                if os.getpgid(p.pid) == pgid:
+                    group.append(p)
+            except Exception:
+                print("do we really want to pass? 1")
+                pass
+        return group
+
+    def set_memory_limit(self, all_processes):
         """Estimate process count and apply memory limits only if needed."""
         try:
-            all_processes = self.process.children(recursive=True) + [self.process]
             num_processes = max(1, len(all_processes))
             per_process_limit = (self.max_memory_mb // num_processes) * 1024 * 1024
             
@@ -39,22 +50,32 @@ class MemoryMonitor:
                 self.last_process_count = num_processes
                 for p in all_processes:
                     try:
-                        resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
+                        p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
+                        #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
                     except Exception:
+                        print("do we really want to Ignore permission errors?")
                         pass  # Ignore permission errors
         except Exception:
+            print("do we really want to Ignore rare process termination errors?")
             pass  # Ignore rare process termination errors
 
     def monitor_cpu_memory(self, interval):
         while not self.stop_event.is_set():
-            children_memory = sum(p.memory_info().rss for p in self.process.children(recursive=True))
-            current_memory = children_memory + self.process.memory_info().rss
+            all_processes = self.get_process_group()            
+            #all_processes = self.process.children(recursive=True) + [self.process]
+            
+            num_processes = max(1, len(all_processes))
+            
+            current_memory = sum(p.memory_info().rss for p in all_processes)
+            
             # here we can add other parameters if need be
-            self.memory_log.append({"time": time.time(), "memory": current_memory})
+            self.memory_log.append({"time": time.time(), 
+                                    "memory": current_memory,
+                                    "processes": num_processes})
 
             # Check process count every 5 seconds and adjust if needed
             if len(self.memory_log) % int(5 / interval) == 0:
-                self.set_memory_limit()
+                self.set_memory_limit(all_processes)
             
             time.sleep(interval)
 
@@ -64,7 +85,7 @@ class MemoryMonitor:
             interval = 0.1
             
             # Set initial memory limit
-            self.set_memory_limit()
+            #self.set_memory_limit()
             
             # Start the CPU memory monitoring thread.
             monitor_thread = threading.Thread(target=self.monitor_cpu_memory, args=(interval,))
@@ -73,6 +94,7 @@ class MemoryMonitor:
             try:
                 output = forward_func(model, *args, **kwargs)  # Run the original forward pass
             except Exception as e:
+                print("forward_func failed with exc: ", str(e))
                 self.exception = str(e)
                 output = None
             # Stop monitoring
@@ -87,7 +109,8 @@ class MemoryMonitor:
 
 class Bench:
 
-    def summarize_profile(self, model_profiler):
+    def summarize_profile(self, model_profiler: MemoryMonitor):
+        # TODO: move method to MemoryMonitor
 
         if len(model_profiler.memory_log)>1:
             data = pd.DataFrame(model_profiler.memory_log)
@@ -216,7 +239,7 @@ class Bench:
                             self.init_batch(batch_size)
 
 
-                            print(f"running experiment:\n {json.dumps(self.case)}")
+                            print(f"running experiment:\n {json.dumps(self.case, indent=2)}")
                             
                             #wat = json.dumps(self.case_objects["batch_size"])
                             #print(f"test data:\n {wat}")
@@ -249,8 +272,8 @@ class Bench:
                         )
         vocoder_model.id = voc_model_name
 
-        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
+        # self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
+        # vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
                     
         self.case_objects["vocoder_model"] = vocoder_model
         self.case["vocoder_model"] = voc_model_name
@@ -270,8 +293,8 @@ class Bench:
                     run_opts={"device":self.case_objects["device"]} 
                     )
         tts_model.id = tts_model_name
-        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
+        # self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
+        # tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
 
         self.case_objects["tts_model"] = tts_model
         self.case["tts_model"] = tts_model_name

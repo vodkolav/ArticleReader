@@ -130,22 +130,33 @@ class Narrator:
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
         print("     running TTS model")
-        mel_outputs, mel_lengths, alignments = self.tts.encode_batch(batch)
-        print("     TTS model finished")
-        if self.tts.hparams.max_decoder_steps in mel_lengths:
-            Warning("We probably have truncated chunks")
+        output = self.tts.encode_batch(batch)
+        
+        if output is not None: 
+            mel_outputs, mel_lengths, alignments = output
+            print("     TTS model finished")
+            if self.tts.hparams.max_decoder_steps in mel_lengths:
+                Warning("       We probably have truncated chunks")
 
-        print("     run vocoder model")
+            print("     running vocoder model")
+            waveforms = self.vocoder.decode_batch(
+                mel_outputs, mel_lengths, self.hop_len          
+            )  # .squeeze(1)                  
 
-        waveforms = self.vocoder.decode_batch(
-            mel_outputs, mel_lengths, self.hop_len
-        )  # .squeeze(1)
-        if waveforms is None:
-            print("     vocoder failed. returning silence")
-            # return zeros tensor of expected size
-            waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
-        print("     vocoder model finished")
-        # out: batch of waveforms, mel_lengths
+            if waveforms is not None:
+                print("     vocoder model finished")   
+                # out: batch of waveforms, mel_lengths
+                return waveforms, mel_lengths    
+            else:                       
+                print("     vocoder failed. returning silence")
+                # return zeros tensor of expected size
+                #waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
+        else: 
+            print("     tts model failed. skipping vocoder stage, returning silence")
+            mel_lengths = torch.ones(len(batch)) * 256 # just arbitrary number
+            # return zeros tensor of expected size        
+        #TODO: maybe handle output of failed runs without garbage data (the zeros tensor)
+        waveforms = torch.zeros(batch.shape[0],1,int(max(mel_lengths)) * self.hop_len)        
         return waveforms, mel_lengths
 
     def batch(self, iterable, n=1):
