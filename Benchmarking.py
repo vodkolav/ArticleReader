@@ -24,8 +24,18 @@ class MemoryMonitor:
         self.stage = stage
         self.model_id = model_id
         self.process = psutil.Process(os.getpid())
-        self.max_memory_mb = 20000 # 40000
+        self.max_memory_bytes = self.get_free_memory_bytes()*1.8 #20000 # 40000
         self.last_process_count = 0
+        self.interval = 0.1
+
+    def get_free_memory_bytes(self):
+        with open('/proc/meminfo', 'r') as mem:
+            free_memory = 0
+            for i in mem:
+                sline = i.split()
+                if str(sline[0]) in ('MemFree:', 'Buffers:', 'Cached:'):
+                    free_memory += int(sline[1])
+        return free_memory * 1000
 
     def get_process_group(self):
         pgid = os.getpgid(os.getpid())
@@ -39,56 +49,78 @@ class MemoryMonitor:
                 pass
         return group
 
+    def siblings_snapshot(self):
+        # heavy artillery, not tested much. use sparingly.
+        # snapshots the stats of all the sibling processes of this process
+        siblings = self.process.parent().children(recursive=True)
+        snpsh = []
+        for s in siblings:
+            snp = s.memory_info()._asdict()
+            snp["_pid"] = s._pid
+            snp["_name"] = s._name
+            snpsh.append(snp)
+        return snpsh
+
     def set_memory_limit(self, all_processes):
         """Estimate process count and apply memory limits only if needed."""
+        
+        num_processes = max(1, len(all_processes))
+        per_process_limit = (self.max_memory_bytes // num_processes) 
+
         try:
-            num_processes = max(1, len(all_processes))
-            per_process_limit = (self.max_memory_mb // num_processes) * 1024 * 1024
-            
-            # Update limits only if the number of processes has changed significantly
-            if abs(num_processes - self.last_process_count) / max(1, self.last_process_count) > 0.2:
-                self.last_process_count = num_processes
-                for p in all_processes:
-                    try:
-                        p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                        #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                    except Exception:
-                        print("do we really want to Ignore permission errors?")
-                        pass  # Ignore permission errors
+            # Check process count every 5 seconds and adjust if needed
+            if len(self.memory_log) % int(5 / self.interval) == 0:
+
+                # Update limits only if the number of processes has changed significantly
+                if abs(num_processes - self.last_process_count) / max(1, self.last_process_count) > 0.2:
+                    self.last_process_count = num_processes
+                    for p in all_processes:
+                        try:
+                            p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
+                            #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
+                        except Exception:
+                            print("do we really want to Ignore permission errors?")
+                            pass  # Ignore permission errors
         except Exception:
             print("do we really want to Ignore rare process termination errors?")
             pass  # Ignore rare process termination errors
+        return num_processes, per_process_limit
 
-    def monitor_cpu_memory(self, interval):
+    def monitor_cpu_memory(self):
         while not self.stop_event.is_set():
             all_processes = self.get_process_group()            
             #all_processes = self.process.children(recursive=True) + [self.process]
+
+            num_processes, per_process_limit = self.set_memory_limit(all_processes)
             
-            num_processes = max(1, len(all_processes))
-            
-            current_memory = sum(p.memory_info().rss for p in all_processes)
-            
+            RSS = sum(p.memory_info().rss for p in all_processes)
+            VMS = sum(p.memory_info().vms for p in all_processes)
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(), 
-                                    "memory": current_memory,
-                                    "processes": num_processes})
-
-            # Check process count every 5 seconds and adjust if needed
-            if len(self.memory_log) % int(5 / interval) == 0:
-                self.set_memory_limit(all_processes)
+                                    "memory": RSS,
+                                    "RSS": RSS,
+                                    "VMS": VMS,
+                                    "processes": num_processes,
+                                    "num_threads": self.process.num_threads(),
+                                    "per_process_limit":per_process_limit,
+                                    "free_memory":self.get_free_memory_bytes(),
+                                    #"siblings": self.siblings_snapshot() #only use when REALLY needed
+                                    })     
             
-            time.sleep(interval)
+            
+            time.sleep(self.interval)
 
     def attach_to(self, forward_func):
         def wrapper(model, *args, **kwargs):
             self.memory_log.clear()  # Clear previous logs
-            interval = 0.1
-            
+            # add first empty record to split the 
+            # different cases on the graphs   
+            self.memory_log.append({"time": time.time()}) #           
             # Set initial memory limit
             #self.set_memory_limit()
             
             # Start the CPU memory monitoring thread.
-            monitor_thread = threading.Thread(target=self.monitor_cpu_memory, args=(interval,))
+            monitor_thread = threading.Thread(target=self.monitor_cpu_memory)
             monitor_thread.start()
             
             try:
@@ -129,6 +161,7 @@ class Bench:
             "run_time_sec": dur,
             "memory_log": model_profiler.memory_log,
             "exceptions": model_profiler.exception,
+            "max_memory_bytes": model_profiler.max_memory_bytes,         
             "n_threads": None
         }
         return res
@@ -166,7 +199,7 @@ class Bench:
         tts_model.id = model_name
 
         model_name = case["vocoder_model"]
-        vocoder_model = self.vocoder = HIFIGAN.from_hparams(
+        vocoder_model = HIFIGAN.from_hparams(
                 source=f"{provider}/{model_name}",
                 savedir=f"checkpoints/{model_name}",
                 run_opts={"device":dev} 
@@ -265,7 +298,7 @@ class Bench:
         self.case["chunk_length"] = chunk_length
 
     def init_voc_model(self, voc_model_name):
-        vocoder_model = self.vocoder = HIFIGAN.from_hparams(
+        vocoder_model = HIFIGAN.from_hparams(
                         source=f"{self.provider}/{voc_model_name}",
                         savedir=f"checkpoints/{voc_model_name}",
                         run_opts={"device":self.case_objects["device"]} 
