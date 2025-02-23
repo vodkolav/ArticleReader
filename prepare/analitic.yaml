@@ -1,0 +1,14 @@
+name: analitic
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - ipython
+  - nbformat
+  - ipykernel
+  - pandas
+  - pandasql
+  - plotly
+  - psutil

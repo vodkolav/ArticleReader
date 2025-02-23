@@ -44,11 +44,19 @@ conda env config vars set PYSPARK_PYTHON=/home/linuxu/anaconda3/envs/$ENV_NAME/b
 
 
 # Register Jupyter kernel
+# Using virtualenv or conda envs, you can make your IPython kernel in one env available to Jupyter 
+# in a different env. To do so, run ipykernel install from the kernel’s env, with –prefix pointing to the Jupyter env:
 echo "Registering Jupyter kernel..."
 python -m ipykernel install --name=$ENV_NAME --display-name "Python ($ENV_NAME)" --prefix=/home/linuxu/anaconda3/envs/jupy
 
 # Deactivate environment
 #conda deactivate
+
+# create environment for analyzing results
+ENV_NAME=analitic
+conda env create -f $ENV_NAME 
+conda activate $ENV_NAME 
+python -m ipykernel install --name=$ENV_NAME --display-name "Python ($ENV_NAME)" --prefix=/home/linuxu/anaconda3/envs/jupy
 
 echo "Done. Use Jupyter Lab and select the kernel 'Python ($ENV_NAME)'."
 

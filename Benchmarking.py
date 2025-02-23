@@ -10,6 +10,7 @@ import pandas as pd
 from speechbrain.inference import Tacotron2, HIFIGAN
 import json
 import resource
+from pathlib import Path
 
 class MemoryMonitor:
     """
@@ -24,7 +25,7 @@ class MemoryMonitor:
         self.stage = stage
         self.model_id = model_id
         self.process = psutil.Process(os.getpid())
-        self.max_memory_bytes = self.get_free_memory_bytes()*1.8 #20000 # 40000
+        self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
         self.interval = 0.1
 
@@ -65,7 +66,7 @@ class MemoryMonitor:
         """Estimate process count and apply memory limits only if needed."""
         
         num_processes = max(1, len(all_processes))
-        per_process_limit = (self.max_memory_bytes // num_processes) 
+        per_process_limit = (self.memory_limit_bytes // num_processes) 
 
         try:
             # Check process count every 5 seconds and adjust if needed
@@ -141,6 +142,16 @@ class MemoryMonitor:
 
 class Bench:
 
+    def __init__(self, benchmark_dir = "benchmark", patt = "*"):
+        self.benchmark_dir = benchmark_dir
+        self.donecases = self.load_benchmarks(patt)
+
+    def load_benchmarks(self, patt = "*"):
+        paths = Path(self.benchmark_dir).glob(patt +".json")
+        experiments = [pd.read_json(p, orient="records") for p in paths]
+        bnch_data = pd.concat(experiments)
+        return bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
+
     def summarize_profile(self, model_profiler: MemoryMonitor):
         # TODO: move method to MemoryMonitor
 
@@ -161,7 +172,7 @@ class Bench:
             "run_time_sec": dur,
             "memory_log": model_profiler.memory_log,
             "exceptions": model_profiler.exception,
-            "max_memory_bytes": model_profiler.max_memory_bytes,         
+            "memory_limit_bytes": model_profiler.memory_limit_bytes,         
             "n_threads": None
         }
         return res
@@ -241,7 +252,7 @@ class Bench:
 
 
 
-    def run_experiments(self, processed_text, grid):
+    def run_experiments(self, processed_text, grid, force = False):
         """
         grid = {"chunk_length": range(50, 500, 50),
                 "batch_size": (1, 2, 3, 5, 10, 20, 30, 50, 70, 100, 200),
@@ -271,15 +282,15 @@ class Bench:
                         for batch_size in grid["batch_size"]:
                             self.init_batch(batch_size)
 
-
-                            print(f"running experiment:\n {json.dumps(self.case, indent=2)}")
-                            
-                            #wat = json.dumps(self.case_objects["batch_size"])
-                            #print(f"test data:\n {wat}")
-                            experiment_run = self.run_case()
-                            print("saving benchmark data")
-                            with open("benchmark/" + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
-                                json.dump(experiment_run,f, indent=4)
+                            print("-"*30)
+                            #   if case not yet exists
+                            if force or not (pd.DataFrame([self.case]).iloc[0] == self.donecases).all(axis=1).any():                                
+                                experiment_run = self.run_case()
+                                print("saving benchmark data")
+                                with open("benchmark/" + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
+                                    json.dump(experiment_run,f, indent=4)
+                            else:
+                                print("data for case already exists:\n", self.case)
         print("experiment complete.")
 
     def init_batch(self, batch_size):
@@ -337,6 +348,8 @@ class Bench:
         sampling_freq = 22050.0
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
         case_file = "output/" + tstp
+
+        print(f"{tstp}: running experiment:\n {json.dumps(self.case, indent=2)}")
 
         device = self.case_objects["device"]
         tts_model = self.case_objects["tts_model"]
