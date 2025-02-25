@@ -1,13 +1,29 @@
 #!/bin/bash
 
+
+
 # Variables
 ENV_YAML="pyspark_TTS.yml"
 ENV_NAME="pyspark_TTS"
 
 set -e
 # Path to existing Spark installation
-#SPARK_HOME="/path/to/spark"
+SPARK_HOME="/usr/local/spark/"
 #JAVA_HOME="/path/to/java"
+
+
+# install Spark 
+# TODO: check if same version aready installed
+wget https://dlcdn.apache.org/spark/spark-3.5.4/spark-3.5.4-bin-hadoop3.tgz
+
+sudo tar xvf spark-3.5.4-bin-hadoop3.tgz -C $SPARK_HOME
+
+sudo chmod -R 777 $SPARK_HOME
+cd $SPARK_HOME
+sudo unlink spark
+sudo ln -sv spark-3.5.4-bin-hadoop3 spark
+sudo chown -h linuxu:linuxu spark
+
 
 # Create Conda environment from YAML
 echo "Creating Conda environment from $ENV_YAML..."
