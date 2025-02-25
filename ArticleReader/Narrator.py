@@ -130,6 +130,7 @@ class Narrator:
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
         print("     running TTS model")
+        print("     batch size: ", len(batch))
         output = self.tts.encode_batch(batch)
         
         if output is not None: 
