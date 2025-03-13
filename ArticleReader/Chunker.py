@@ -123,20 +123,32 @@ class Chunker:
 
         # print(text)
 
-        rawchunks = self.breakByParagraphs(text)
-        self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
-        self.chunks["text_len"] = self.chunks.sentence.str.len()
+        self.chunks = self.breakByParagraphs(text)
+        # self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
+        # self.chunks["text_len"] = self.chunks.sentence.str.len()
 
+    def as_pandas(self):
+        chunks = pd.DataFrame(self.chunks, columns=["sentence"]).reset_index()
+        chunks["text_len"] = self.chunks.sentence.str.len()
+        return chunks
 
     def get_batch_sorted(self, batch_size = 3, start=0):
-        self.chunks.sort_values("text_len", ascending=False, inplace=True)        
-        return self.chunks.iloc[start : start +batch_size].copy()
+        df = self.as_pandas().sort_values("text_len", ascending=False)        
+        return df.iloc[start : start +batch_size]
         
-    def get_batch_chronological(self, batch_size = 3, start=0):                    
-        return self.chunks.iloc[start : start +batch_size].copy()
+    def get_batch_chronological(self, batch_size = 3, start=0):   
+        df = self.as_pandas()                 
+        return df.iloc[start : start +batch_size]
 
     def get_test_batch(self, chunks=20, start=0):
-        return self.chunks[start : start + chunks]
+        df = self.as_pandas()   
+        return df.iloc[start : start + chunks]
+    
+    def get_all_chronological(self):
+        return self.as_pandas()
+    
+    def get_chunks(self):
+        return self.chunks
 
     def save_chunks_as_text(self, filename, chunks):
         with open(filename, "w+") as f:
