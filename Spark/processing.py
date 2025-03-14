@@ -56,12 +56,30 @@ def output_sound(wfc):
 
 
 def preprocess_text(file_content):
-    # How this works without udf? 
     parser = LatexParser()
     processed_text = parser.custom_latex_to_text(file_content)
     return processed_text, parser.tables, parser.figures
 
-@udf(ArrayType(StringType()))
+# Define schema for the UDF return type
+preprocess_schema = StructType([
+    StructField("text", StringType(), False),
+    StructField("tables", ArrayType(StringType()), False),
+    StructField("figures", ArrayType(StringType()), False)
+])
+
+@pandas_udf(preprocess_schema)
+def preprocess_text_udf(content_series: pd.Series) -> pd.DataFrame:
+    return content_series.apply(lambda x: pd.Series(preprocess_text(x)))  # Apply function
+
+
+# Define schema for chunks
+chunk_schema = ArrayType(StringType())
+
+@pandas_udf(chunk_schema)
+def split_text_into_chunks_udf(text_series: pd.Series) -> pd.DataFrame:
+    return text_series.apply(udf_split_text)  # Apply function row-wise
+
+
 def udf_split_text(text, chunk_size=500, test =False):
     from ArticleReader.Chunker import Chunker
     chunker = Chunker(max_len=chunk_size)

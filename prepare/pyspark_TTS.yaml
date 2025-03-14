@@ -9,13 +9,13 @@ dependencies:
   - ipykernel
   - pandas
   - pyspark
-  - pylatexenc==3.0a30
   - pytorch==2.4.1
   - torchaudio
   #- cpuonly
   - PySoundFile
   - nltk
   - pip:
+      - pylatexenc==3.0a30
       - speechbrain  
       - findspark
       - py4j

@@ -1,6 +1,9 @@
 # 5. Entry Point (main.py)
 
 # This allows switching between batch and streaming dynamically.
+import os
+import sys
+sys.path.append(os.getcwd())
 
 import argparse
 import threading
@@ -9,6 +12,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def main():
     

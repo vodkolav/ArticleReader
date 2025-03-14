@@ -5,18 +5,22 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "Python: Current File",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}"
+            "justMyCode": false
         },
         {
-            "name": "Python Debugger: Python File",
+            "name": "Python: batch TTS",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}"
+            "program": "${workspaceFolder}/Spark/TTS.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["--mode", "batch", "--input", "data/arXiv-2106.04624v1/main.tex", "--output", "output/"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
