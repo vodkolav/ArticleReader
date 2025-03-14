@@ -34,7 +34,7 @@ source $(conda info --base)/etc/profile.d/conda.sh
 conda activate $ENV_NAME  
 
 # Configure env variables to find spark and kafka
-conda env config vars set PATH="/usr/bin":$PATH:/usr/local/spark/spark/bin:/usr/local/kafka/kafka/bin
+conda env config vars set PATH=$PATH:/usr/local/spark/spark/bin:/usr/local/kafka/kafka/bin
 conda env config vars set SPARK_HOME=/usr/local/spark/spark
 #export PATH=$PATH:/usr/local/spark/spark/bin
 conda env config vars set KAFKA_HOME=/usr/local/kafka/kafka

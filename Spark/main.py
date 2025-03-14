@@ -4,7 +4,7 @@
 
 import argparse
 import threading
-from pipeline import process_batch, process_stream
+from pipeline import process_file, process_stream
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +28,7 @@ def main():
         if not args.input or not args.output:
             print("Error: Batch mode requires --input and --output")
             return
-        process_batch(args.input, args.output)
+        process_file(args.input, args.output)
 
     elif args.mode == "stream":
         if not args.kafka_topic or not args.kafka_servers or not args.output_type:

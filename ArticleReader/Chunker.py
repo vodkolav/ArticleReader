@@ -129,7 +129,7 @@ class Chunker:
 
     def as_pandas(self):
         chunks = pd.DataFrame(self.chunks, columns=["sentence"]).reset_index()
-        chunks["text_len"] = self.chunks.sentence.str.len()
+        chunks["text_len"] = chunks.sentence.str.len()
         return chunks
 
     def get_batch_sorted(self, batch_size = 3, start=0):

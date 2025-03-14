@@ -3,7 +3,7 @@
 6. Running the Pipeline
 Batch Mode
 
-python main.py --mode batch --input /path/to/input --output /path/to/output
+python main.py --mode batch --input data/arXiv-2106.04624v1/main.tex --output output
 
 Streaming Mode
 

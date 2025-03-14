@@ -11,7 +11,7 @@ import torch
 from pyspark.sql.functions import pandas_udf, PandasUDFType, udf, col, lit, desc, floor
 
 from pyspark.sql import functions as F
-from pyspark.sql.types import *
+from pyspark.sql.types import StructType, StructField, ArrayType, IntegerType, FloatType, StringType
 from pyspark import pandas as psp
 
 from ArticleReader.Chunker import Chunker
@@ -55,15 +55,19 @@ def output_sound(wfc):
     print("done saving sound")
 
 
-def preprocess_text():
-
+def preprocess_text(file_content):
+    # How this works without udf? 
     parser = LatexParser()
-    content = parser.read_latex(input_file)
-    processed = parser.custom_latex_to_text(content)
-    parser.save_text(processed, "dbg/spec_my.txt")
+    processed_text = parser.custom_latex_to_text(file_content)
+    return processed_text, parser.tables, parser.figures
 
-    tables = parser.get_tables()
-    parser.save_text(tables, "dbg/tables.tex")
+@udf(ArrayType(StringType()))
+def udf_split_text(text, chunk_size=500, test =False):
+    from ArticleReader.Chunker import Chunker
+    chunker = Chunker(max_len=chunk_size)
+    #print(text)
+    chunker.split_text_into_chunks(text)
+    return chunker.get_chunks()
 
 def chunk_text():
     chunker = Chunker(max_len=200)
