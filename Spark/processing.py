@@ -45,13 +45,12 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
  
   return output
 
-def output_sound(wfc):
+def output_sound(wfc, output_file):
     waveform = wfc.collect()[0]
     narrator = Narrator()
     tens = torch.Tensor(waveform)
-    case_file = "output/spark_test"
     print("saving sound")
-    narrator.save_audio(case_file + ".wav",tens )
+    narrator.save_audio(output_file + ".wav",tens )
     print("done saving sound")
 
 
@@ -60,11 +59,16 @@ def preprocess_text(file_content):
     processed_text = parser.custom_latex_to_text(file_content)
     return processed_text, parser.tables, parser.figures
 
+visuals_schema = StructType([
+    StructField("label", StringType(), True),
+    StructField("content", StringType(), True)   
+])
+
 # Define schema for the UDF return type
 preprocess_schema = StructType([
-    StructField("text", StringType(), False),
-    StructField("tables", ArrayType(StringType()), False),
-    StructField("figures", ArrayType(StringType()), False)
+    StructField("text", StringType(), True),
+    StructField("tables", ArrayType(visuals_schema), True),
+    StructField("figures", ArrayType(visuals_schema), True)
 ])
 
 @pandas_udf(preprocess_schema)
