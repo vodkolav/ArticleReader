@@ -3,22 +3,23 @@
 # This handles both batch and streaming.
 
 from config import get_spark_session
-from processing import compute_waveform_lengths, concatenate_waveforms, output_sound
+from processing import compute_waveform_lengths, concatenate_waveforms, output_sound, save_to_disk
 from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf 
 from utils import zip_project
 
 from pyspark.sql import functions as F, Row
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import pandas_udf, PandasUDFType, udf, col, lit, desc, floor, monotonically_increasing_id
-from pyspark.sql.functions import collect_list, flatten
+from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format
 from pyspark.sql.functions import explode
 from datetime import datetime
 
-def process_file(input_file = "data/arXiv-2106.04624v1/main.tex",  output_path="output/"):
+def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
 
     # params
     test_run = True
     text_volume_max  = 600 
+    
     #logger.info("Zipping project for distribution to Spark workers")
     zip_project(
         project_dir="ArticleReader",
@@ -30,19 +31,21 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex",  output_path="
         zip_filename="Spark.zip",
         exclude_patterns=["trash/*"])
 
-    output_file = output_path + datetime.now().strftime(r"%y.%m.%d-%H")
+    #output_file = output_path + datetime.now().strftime(r"%y.%m.%d-%H")
 
     spark = get_spark_session("TTS CPU Inference")
     sc = spark.sparkContext
-    sc.addPyFile("ArtRead.zip")
+    sc.addPyFile("ArticleReader.zip")
     sc.addPyFile("Spark.zip")
 
     from pyspark.sql.functions import input_file_name, col, concat_ws
 
-    # Read text files into DataFrame with columns "filename" and "content"
+    # Read text files into DataFrame with columns "filename", "request_id" and "content"
     # input_file can also be a directory of files
     df_whole = spark.read.text(input_file).withColumn("filename", input_file_name()) \
-        .groupBy("filename") \
+        .withColumn("request_id",date_format(current_timestamp(),"yy.MM.dd-HH.mm.ss.SSS")\
+                    .alias("request_id")) \
+        .groupBy("filename","request_id") \
         .agg(concat_ws("\n", collect_list("value")).alias("content"))
     
     # # Read text files and aggregate content per file
@@ -53,7 +56,7 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex",  output_path="
 
     # Extract text, tables, and figures into separate columns
     df_processed = df_processed.select(
-        "filename",
+        "filename","request_id",
         df_processed["processed.text"].alias("text"),
         df_processed["processed.tables"].alias("tables"),
         df_processed["processed.figures"].alias("figures")
@@ -64,37 +67,13 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex",  output_path="
 
     # Explode chunks into multiple rows
     df_chunks = df_chunks.select(
-        "filename", 
+        "filename","request_id",
         explode("chunks").alias("sentence")  # This creates multiple rows per file
     )
-
-    # Extract individual fields from exploded struct
-    # df_chunks = df_chunks.select(
-    #     "filename",
-    #     col("chunk.index").alias("chunk_index"),
-    #     col("chunk.sentence").alias("chunk_text"),
-    #     col("chunk.text_len").alias("chunk_length")
-    # )    
-
-    # # Read, parse and convert LaTeX content
-    # rdd = sc.wholeTextFiles(input_file)
-    # df = rdd.map(lambda x: Row(filename=x[0], text=x[1]).toDF()
-    # #   tables=x[1][1], 
-    # #                                             figures=x[1][2])
-    # processed_rdd = rdd.mapValues(preprocess_text)
-    
-    # # Convert RDD to DataFrame
-    # df_processed = processed_
-
     # #FORK: only text continues forward. tables and figures to be implemented in different pipeline
 
-    # # split converted text into chunks
-    # df_chunks = df_processed.withColumn("chunks", udf_split_text(df_processed["text"])) \
-    #     .selectExpr("filename", "explode(chunks) as sentence")
-  
-
     chunks = df_chunks.withColumn("index", monotonically_increasing_id()) \
-        .selectExpr("index", " sentence ",  " length(sentence) as text_len")
+        .selectExpr("filename","request_id", "index", " sentence ",  " length(sentence) as text_len")
     
     # for test runs I want to process just 15 chunks
     if test_run:
@@ -115,13 +94,17 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex",  output_path="
     # perform the TTS and vocoder inference
     processed = step1.repartitionByRange(nparts[0], "part") \
         .withColumn("prediction", predict_batch_udf(col("sentence"))).cache()\
-            .select("index", "sentence", "text_len", "prediction.*") \
+            .select("filename","request_id", "index", "sentence", "text_len", "prediction.*") \
                 .sort("index")
 
     # combine into single waveform
-    wf = processed.agg(flatten(collect_list(col("waveform")))).alias("speech")
+    wf = processed.groupBy("filename","request_id")\
+        .agg(flatten(collect_list(col("waveform"))).alias("speech"))\
+            
+    # TODO: maybe we can (should?) recombine this with df_processed? 
 
-    output_sound(wf,output_file)
+    # save processed speech to disk
+    wf.foreach(save_to_disk)
 
 
 
