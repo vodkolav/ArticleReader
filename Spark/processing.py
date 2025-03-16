@@ -22,6 +22,8 @@ from pyspark.sql import functions as F
 
 import soundfile as sf
 
+import config as conf
+
 def compute_waveform_lengths(df):
     return df.withColumn("waveform_length", F.size("waveform"))
 
@@ -51,9 +53,8 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
 def save_to_disk(row):
 
     """ Function to save speech data as a WAV file """
-    output_path="output/"
     sr = 22050
-    file_path = output_path + row.request_id + ".wav"
+    file_path = conf.output_path + row.request_id + ".wav"
     wav_data = row.speech  # Assuming speech is a NumPy array or bytes
     
     # Save using soundfile (if NumPy array) or write raw bytes

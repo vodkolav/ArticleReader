@@ -8,6 +8,7 @@ sys.path.append(os.getcwd())
 import argparse
 import threading
 from pipeline import process_file, process_stream
+from streaming import KafkaProducer
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -39,13 +40,30 @@ def main():
             print("Error: Streaming mode requires --kafka-topic, --kafka-servers, and --output-type")
             return
         
+        print("Starting kafka producer")
+        # Configuration for Kafka
+        config = {'bootstrap.servers': args.kafka_servers}
+        src = 'data'
+
+        # Initialize the producer
+        producer = KafkaProducer(topic=args.kafka_topic, source = src, config=config)
+
+        # Start the producer
+        producer.start()
+        print("Producer started.")
+
         # Run streaming in a separate thread so it can be stopped gracefully
-        stream_thread = threading.Thread(target=process_stream, args=(args.kafka_topic, args.kafka_servers, args.output_type, args.output))
+        stream_thread = threading.Thread(target=process_stream, args=(args.kafka_topic, args.kafka_servers, args.output_type))
         stream_thread.start()
         try:
             stream_thread.join()
         except KeyboardInterrupt:
             print("Shutting down gracefully...")
+            producer.stop()
+            # reset topic to start producing again 
+            producer.reset_topic()
+            print("kafka producer stopped.")
+
 
 if __name__ == "__main__":
     main()

@@ -3,56 +3,41 @@
 # This handles both batch and streaming.
 
 from config import get_spark_session
+import config as conf
 from processing import compute_waveform_lengths, concatenate_waveforms, output_sound, save_to_disk
 from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf 
-from utils import zip_project
 
 from pyspark.sql import functions as F, Row
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import pandas_udf, PandasUDFType, udf, col, lit, desc, floor, monotonically_increasing_id
 from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format
-from pyspark.sql.functions import explode
+from pyspark.sql.functions import explode, input_file_name, col, concat_ws
+
 from datetime import datetime
 
 def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
-
-    # params
-    test_run = True
-    text_volume_max  = 600 
+ 
+    spark = get_spark_session(conf.app_name)    
     
-    #logger.info("Zipping project for distribution to Spark workers")
-    zip_project(
-        project_dir="ArticleReader",
-        zip_filename="ArticleReader.zip",
-        exclude_patterns=["trash/*"])
-    
-    zip_project(
-        project_dir="Spark",
-        zip_filename="Spark.zip",
-        exclude_patterns=["trash/*"])
-
-    #output_file = output_path + datetime.now().strftime(r"%y.%m.%d-%H")
-
-    spark = get_spark_session("TTS CPU Inference")
-    sc = spark.sparkContext
-    sc.addPyFile("ArticleReader.zip")
-    sc.addPyFile("Spark.zip")
-
-    from pyspark.sql.functions import input_file_name, col, concat_ws
-
     # Read text files into DataFrame with columns "filename", "request_id" and "content"
     # input_file can also be a directory of files
-    df_whole = spark.read.text(input_file).withColumn("filename", input_file_name()) \
-        .withColumn("request_id",date_format(current_timestamp(),"yy.MM.dd-HH.mm.ss.SSS")\
-                    .alias("request_id")) \
-        .groupBy("filename","request_id") \
-        .agg(concat_ws("\n", collect_list("value")).alias("content"))
+    # add request_id (a time stamp) for tracking jobs in cluster
+    df_requests = spark.read.text(input_file).withColumn("filename", input_file_name()) \
+                    .withColumn("request_id",date_format(current_timestamp(),"yy.MM.dd-HH.mm.ss.SSS")\
+                            .alias("request_id")) \
+                    .groupBy("filename","request_id") \
+                    .agg(concat_ws("\n", collect_list("value")).alias("content"))
+    #run core pipeline
+    df_wf = pipeline_core(df_requests)
     
-    # # Read text files and aggregate content per file
-    # df_whole = spark.read.text("path/to/files") \
-    #     .withColumn("filename", input_file_name()) \
+    # save processed speech to disk
+    df_wf.foreach(save_to_disk)
+   
 
-    df_processed = df_whole.withColumn("processed", preprocess_text_udf(col("content")))
+def pipeline_core(df_requests):
+    
+    # preprocess LaTeX text 
+    df_processed = df_requests.withColumn("processed", preprocess_text_udf(col("content")))
 
     # Extract text, tables, and figures into separate columns
     df_processed = df_processed.select(
@@ -76,8 +61,8 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
         .selectExpr("filename","request_id", "index", " sentence ",  " length(sentence) as text_len")
     
     # for test runs I want to process just 15 chunks
-    if test_run:
-        chunks = chunks.offset(295).limit(15)
+    if conf.test_run:
+        chunks = chunks.offset(301).limit(15)
 
 
     # Partition by cumulative text volume
@@ -86,7 +71,7 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
     # TODO: maybe can use partitionng here for separating whole text into chapters?     
 
     step1 = chunks.withColumn('cum_text_volume', F.sum('text_len').over(text_volume_window)) \
-        .withColumn('part', floor(col('cum_text_volume')/lit(text_volume_max)) ) 
+        .withColumn('part', floor(col('cum_text_volume')/lit(conf.text_volume_max)) ) 
 
     nparts =  step1.select((lit(1) + F.max("part")).alias("npart")).first()
     # this is bad. need to find way to bypass this pipeline leak
@@ -102,10 +87,7 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
         .agg(flatten(collect_list(col("waveform"))).alias("speech"))\
             
     # TODO: maybe we can (should?) recombine this with df_processed? 
-
-    # save processed speech to disk
-    wf.foreach(save_to_disk)
-
+    return wf
 
 
 
@@ -122,7 +104,7 @@ def gipis_process_batch(input_path, output_path):
 
 def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
     """Streaming mode processing"""
-    spark = get_spark_session("StreamingWaveformProcessing", streaming=True)
+    spark = get_spark_session(conf.app_name, streaming=True)
 
     # Read from Kafka
     df = spark.readStream \
@@ -133,10 +115,14 @@ def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
         .load()
 
     # Extract value and cast to string (assuming JSON input)
-    df = df.selectExpr("CAST(value AS STRING)")
+    df_requests = df.selectExpr("CAST(key AS STRING) as filename", "CAST(value AS STRING) as content") \
+        .withColumn("request_id",date_format(current_timestamp(),"yy.MM.dd-HH.mm.ss.SSS"))
 
-    # Transform data
-    df = compute_waveform_lengths(df)
+    #run core pipeline
+    df_wf = pipeline_core(df_requests)
+    
+    # save processed speech to disk
+    df_wf.foreach(save_to_disk)
 
     # Define output sink
     query = None
@@ -151,10 +137,7 @@ def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
     
     elif output_type == "hdfs" or output_type == "fs":
         query = df.writeStream \
-            .format("parquet") \
-            .option("path", output_path) \
-            .option("checkpointLocation", "/tmp/parquet_checkpoint/") \
-            .start()
+            .foreach(save_to_disk).start()
 
     elif output_type == "spark_pipeline":
         query = df.writeStream \

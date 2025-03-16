@@ -21,6 +21,19 @@
             "justMyCode": false,
             "args": ["--mode", "batch", "--input", "data/arXiv-2106.04624v1/main.tex", "--output", "output/"],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: streaming TTS",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/Spark/TTS.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["--mode", "stream", 
+            "--kafka-topic", "articles", 
+            "--kafka-servers", "localhost:9092",
+            "--output-type", "fs"],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

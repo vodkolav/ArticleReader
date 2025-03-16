@@ -9,6 +9,7 @@ dependencies:
   - ipykernel
   - pandas
   - pyspark
+  - python-confluent-kafka
   - pytorch==2.4.1
   - torchaudio
   #- cpuonly
