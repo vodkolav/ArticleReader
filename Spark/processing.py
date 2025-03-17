@@ -35,6 +35,9 @@ def concatenate_waveforms(df, order_column):
 def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
   # TODO: calculate and store "seq_len"
   # TODO: non-default model initialization
+  # TODO: also, for supporting streaming, the models somehow 
+  # have to be persistent between requests
+
   narrator = Narrator()    
   waveforms, mel_lengths = narrator.infer(sentences)
 
