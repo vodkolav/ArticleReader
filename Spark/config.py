@@ -11,13 +11,13 @@ from utils import zip_project
 # params
 app_name="TTS CPU Inference"
 test_run = True
-text_volume_max = 600  # will need to be tuned for specific cluster machines
+text_volume_max = 150  # will need to be tuned for specific cluster machines
 output_path="output/"
 
 def get_spark_session(app_name="TTS CPU Inference", streaming=False):
 
     # simulating a cluster with 2 workers
-    workers = 2
+    workers = 1 #2 #
     cpus_limit =  int(os.cpu_count()/ workers) -1 
     mem_limit = "2g" # prod: "16g"/ workers
 
@@ -36,6 +36,10 @@ def get_spark_session(app_name="TTS CPU Inference", streaming=False):
         .config("spark.streaming.stopGracefullyOnShutdown", "true") \
         .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
         .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2") \
+        .config("spark.sql.execution.arrow.pyspark.enabled","true") \
+        .config("log4j.logger.org.apache.spark","DEBUG")\
+        .config("log4j.logger.org.apache.kafka","DEBUG") \
+        
         # Additional configs that might be useful in future:
         # .config("spark.executor.resource.gpu.amount", "1") \
         # .config("spark.executor.memoryOverhead", "<memory>"

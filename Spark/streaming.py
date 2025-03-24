@@ -4,9 +4,11 @@ from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient, NewTopic
 from multiprocessing import Process, Event
 import os, fnmatch
+from datetime import datetime
+import argparse
 
 class KafkaProducer:
-    def __init__(self, topic, source, config, interval_sec = 4):
+    def __init__(self, topic, source, config, interval_sec = 10):
         self.topic = topic
         self.source = source
         self.config = config
@@ -57,11 +59,14 @@ class KafkaProducer:
                 if self.stop_event.is_set():
                     break
                 #print(self.topic, str(fname), str(content))
-                producer.produce(self.topic, key=str(fname), value=str(content))
+                ts = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
+                fn = fname.split("/")[1]
+                producer.produce(self.topic, key=ts + "." + fn, value=str(content))
                 producer.flush()
+                print('feeding file ', fn)
                 time.sleep(self.interval_sec)
-                    
-                        
+            print("All files in source are over.")
+           
         except Exception as e:
             print(f"Error in Kafka producer: {e}")
             raise e
@@ -93,3 +98,30 @@ class KafkaProducer:
         except Exception as e:
             print(f"Error resetting topic '{self.topic}': {e}")
 
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description="Waveform Processing Pipeline")
+    parser.add_argument("--mode", choices=["run", "reset"], default="run", help="run producer or reset topic")
+    # Initialize the producer
+    config = {'bootstrap.servers': "localhost:9092"}
+
+    producer = KafkaProducer(topic='articles', source = 'data', config=config)
+    #
+    args = parser.parse_args()
+
+    if args.mode == "run":
+    # Start the producer
+        producer.start()
+        print("Producer started.")
+    elif args.mode == "reset":
+        producer.reset_topic() 
+
+    # try:
+    #     stream_thread.join()
+    # except KeyboardInterrupt:
+    #     print("Shutting down gracefully...")
+    #     producer.stop()
+    #     # reset topic to start producing again 
+    #     producer.reset_topic()
+    #     print("kafka producer stopped.")

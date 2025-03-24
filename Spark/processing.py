@@ -69,7 +69,7 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
 @pandas_udf(ArrayType(FloatType()))
 def concat_waveforms(sorted_waveforms):
     # sorted_waveforms is a list of structs with "index" and "waveform"
-    return b"".join([row.waveform for row in sorted_waveforms])
+    return b"".join([row for row in sorted_waveforms])
 
 
 def save_to_disk(wav_data, file_path):
@@ -89,6 +89,32 @@ def save_to_disk(wav_data, file_path):
         sf.write(file_path, wav_data, samplerate=sr)
     print("done saving sound")
 
+# Define your pandas function that writes the row to disk.
+def write_row(row):
+    # Loop over rows and write to disk using your custom logic.
+    # Implement your custom write logic here, e.g.:
+    request_id = row["request_id"]
+    speech = row["speech"]
+    timestamp = row["timestamp"]
+    # For example, write a file named using the request_id and timestamp.
+    output_path = conf.output_path + f"/{request_id}_{timestamp}.wav"
+    save_to_disk(speech, output_path)
+
+
+
+# Define your pandas function that writes the row to disk.
+def write_request(pdf: pd.DataFrame) -> pd.DataFrame:
+    # Loop over rows and write to disk using your custom logic.
+    for _, row in pdf.iterrows():
+        # Implement your custom write logic here, e.g.:
+        request_id = row["request_id"]
+        speech = row["speech"]
+        timestamp = row["timestamp"]
+        # For example, write a file named using the request_id and timestamp.
+        output_path = conf.output_path + f"/{request_id}_{timestamp}.wav"
+        save_to_disk(speech, output_path)
+    # Optionally, return the input PDF or an empty DataFrame.
+    return pdf  # or pd.DataFrame([], columns=pdf.columns)
 
 def custom_write_function(batchDF, batchId):
     # Example: Group by request_id (if not already unique) and apply your custom pandas_udf.
@@ -106,27 +132,12 @@ def custom_write_function(batchDF, batchId):
     # import pandas as pd
     
     # Define the output schema (here, same as input but you can customize)
-    output_schema = batchDF.schema
-    
-    # Define your pandas function that writes the row to disk.
-    def write_request(pdf: pd.DataFrame) -> pd.DataFrame:
-        # Loop over rows and write to disk using your custom logic.
-        for _, row in pdf.iterrows():
-            # Implement your custom write logic here, e.g.:
-            request_id = row["request_id"]
-            speech = row["speech"]
-            timestamp = row["timestamp"]
-            # For example, write a file named using the request_id and timestamp.
-            output_path = conf.output_path + f"/{request_id}_{timestamp}.wav"
-            save_to_disk(speech, output_path)
-        # Optionally, return the input PDF or an empty DataFrame.
-        return pdf  # or pd.DataFrame([], columns=pdf.columns)
-    
+    output_schema = batchDF.schema    
     # Apply your custom pandas_udf (as a grouped transformation if needed).
     # If each request is a single row in batchDF, you might not need grouping.
     processed = batchDF.groupBy("request_id").applyInPandas(write_request, schema=output_schema)
     # Optionally, log the number of requests written:
-    print(f"Batch {batchId}: Processed {processed.count()} requests.")
+    #print(f"Batch {batchId}: Processed {processed.count()} requests.")
 
 
 
@@ -195,7 +206,7 @@ window_schema = StructType([
 ])
 
 sentences_schema = StructType([
-    StructField("window", window_schema, True),
+    StructField("window", window_schema, False),
     StructField("request_id", StringType(), True),
     StructField("index", IntegerType(), True),
     StructField("sentence", StringType(), True),    
