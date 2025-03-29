@@ -62,8 +62,8 @@ class KafkaProducer:
                 #print(self.topic, str(fname), str(content))
                 ts = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
                 fn = fname.split("/")[1]
-                producer.produce(self.topic, key=ts + "." + fn, value=str(content))
-                #producer.flush()
+                producer.produce(self.topic, key=fn + "." + ts, value=str(content))
+                producer.flush()
                 print('feeding file ', fn)
                 time.sleep(self.interval_sec)
             print("All files in source are over.")
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # Initialize the producer
     config = {'bootstrap.servers': "localhost:9092"}
 
-    producer = KafkaProducer(topic=conf.articles_topic, source = 'data', config=config)
+    producer = KafkaProducer(topic=conf.articles_topic, source = 'data', config=config, interval_sec=1)
     #
     args = parser.parse_args()
 
