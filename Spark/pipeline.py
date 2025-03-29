@@ -15,6 +15,21 @@ from pyspark.sql.functions import posexplode, explode, input_file_name, col, con
 
 from datetime import datetime
 
+def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
+    spark = get_spark_session(conf.app_name)  
+
+    from processing import processed_schema
+
+    empty_df = spark.createDataFrame([], processed_schema) # spark is the Spark Session
+    
+    empty_df.show()
+    df_wf = empty_df.transform(batch_tts)
+
+    df_wf.show()
+
+    df_wf.foreach(write_row)
+
+
 def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
  
     spark = get_spark_session(conf.app_name)    
@@ -224,13 +239,24 @@ def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
 
     elif output_type == "spark_pipeline":
         pass
+
+    elif output_type == "console":
+        query = df_wf.writeStream\
+            .format("console")\
+            .outputMode("append") \
+            .option("truncate", False) \
+            .start()
+        
         # query = df.writeStream \
         #     .format("memory") \
         #     .queryName("waveform_table") \
         #     .start()
-    while query.isActive:
-        print(query.lastProgress)
-        time.sleep(10)
+    query.explain()
+    # while query.isActive:
+    #     print(query.lastProgress)
+    #     time.sleep(10)
     # Wait for termination
-    query.awaitTermination()
+    
+    spark.streams.awaitAnyTermination()
+    #query.awaitTermination()
     print("Spark streaming turned off")

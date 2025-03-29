@@ -7,7 +7,7 @@ sys.path.append(os.getcwd())
 os.environ["PYARROW_IGNORE_TIMEZONE"] = '1'
 import argparse
 import threading
-from pipeline import process_file, process_stream
+from pipeline import process_file, process_stream, batch_empty
 from streaming import KafkaProducer
 import logging
 
@@ -20,12 +20,12 @@ def main():
     logger.info("Starting pipeline...")
 
     parser = argparse.ArgumentParser(description="Waveform Processing Pipeline")
-    parser.add_argument("--mode", choices=["batch", "stream"], required=True, help="Run in batch or streaming mode")
+    parser.add_argument("--mode", choices=["batch", "batch_empty", "stream"], required=True, help="Run in batch or streaming mode")
     parser.add_argument("--input", help="Path to input data (batch mode)")
     parser.add_argument("--output", help="Path to output data (batch mode)")
     parser.add_argument("--kafka-topic", help="Kafka topic (streaming mode)")
     parser.add_argument("--kafka-servers", help="Kafka bootstrap servers (streaming mode)")
-    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet"], help="Output type for streaming")
+    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet","console"], help="Output type for streaming")
     
     args = parser.parse_args()
 
@@ -34,6 +34,13 @@ def main():
             print("Error: Batch mode requires --input and --output")
             return
         process_file(args.input, args.output)
+    
+    if args.mode == "batch_empty":
+        if not args.input or not args.output:
+            print("Error: Batch mode requires --input and --output")
+            return
+        batch_empty(args.input, args.output)
+
 
     elif args.mode == "stream":
         if not args.kafka_topic or not args.kafka_servers or not args.output_type:

@@ -130,7 +130,8 @@ def custom_write_function(batchDF, batchId):
     
     # from pyspark.sql.types import StructType, StructField, StringType, BinaryType, TimestampType
     # import pandas as pd
-    
+    # if batchDF.rdd.isEmpty():
+    #     return
     # Define the output schema (here, same as input but you can customize)
     output_schema = batchDF.schema    
     # Apply your custom pandas_udf (as a grouped transformation if needed).
@@ -206,13 +207,23 @@ window_schema = StructType([
 ])
 
 sentences_schema = StructType([
-    StructField("window", window_schema, False),
+    #StructField("window", window_schema, False),
+    StructField("timestamp", TimestampType(), False),
     StructField("request_id", StringType(), True),
     StructField("index", IntegerType(), True),
     StructField("sentence", StringType(), True),    
     StructField("text_len", IntegerType(), True),
     StructField("cum_text_volume", IntegerType(), True),
 ])
+
+
+processed_schema = StructType([
+        StructField("window", window_schema, False),
+        StructField("request_id", StringType(), True),
+        StructField("text", StringType(), True),
+        StructField("tables", ArrayType(visuals_schema), True),
+        StructField("figures", ArrayType(visuals_schema), True)   
+    ])
 
 # def compute_cumsum(df: pd.DataFrame) -> pd.DataFrame:
 #     df = df.sort_values(["request_id", "text_len"], ascending=[True, False])

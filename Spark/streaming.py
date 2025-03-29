@@ -6,6 +6,7 @@ from multiprocessing import Process, Event
 import os, fnmatch
 from datetime import datetime
 import argparse
+import config as conf
 
 class KafkaProducer:
     def __init__(self, topic, source, config, interval_sec = 10):
@@ -62,7 +63,7 @@ class KafkaProducer:
                 ts = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
                 fn = fname.split("/")[1]
                 producer.produce(self.topic, key=ts + "." + fn, value=str(content))
-                producer.flush()
+                #producer.flush()
                 print('feeding file ', fn)
                 time.sleep(self.interval_sec)
             print("All files in source are over.")
@@ -106,14 +107,14 @@ if __name__ == "__main__":
     # Initialize the producer
     config = {'bootstrap.servers': "localhost:9092"}
 
-    producer = KafkaProducer(topic='articles', source = 'data', config=config)
+    producer = KafkaProducer(topic=conf.articles_topic, source = 'data', config=config)
     #
     args = parser.parse_args()
 
     if args.mode == "run":
     # Start the producer
         producer.start()
-        print("Producer started.")
+        print(f"Producer for topic '{conf.articles_topic}' started.")
     elif args.mode == "reset":
         producer.reset_topic() 
 

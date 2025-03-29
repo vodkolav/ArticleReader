@@ -13,6 +13,7 @@ app_name="TTS CPU Inference"
 test_run = True
 text_volume_max = 150  # will need to be tuned for specific cluster machines
 output_path="output/"
+articles_topic="articles"
 
 def get_spark_session(app_name="TTS CPU Inference", streaming=False):
 
@@ -39,6 +40,8 @@ def get_spark_session(app_name="TTS CPU Inference", streaming=False):
         .config("spark.sql.execution.arrow.pyspark.enabled","true") \
         .config("log4j.logger.org.apache.spark","DEBUG")\
         .config("log4j.logger.org.apache.kafka","DEBUG") \
+        .config("spark.sql.streaming.metricsEnabled", "true")\
+        .config("spark.sql.streaming.statefulOperator.checkCorrectness.enabled", "false")
         
         # Additional configs that might be useful in future:
         # .config("spark.executor.resource.gpu.amount", "1") \
@@ -46,6 +49,7 @@ def get_spark_session(app_name="TTS CPU Inference", streaming=False):
     if streaming:
         builder = builder.config("spark.sql.streaming.schemaInference", "true")
     spark = builder.getOrCreate()
+    #spark.sparkContext.setLogLevel("DEBUG")
     distribute_project_code(spark)
     logger.info(f"Spark version: {spark.version}")
     logger.info(f"Using {cpus_limit} CPU cores for inference.")   
