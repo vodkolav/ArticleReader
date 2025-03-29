@@ -10,7 +10,7 @@ from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_
 from pyspark.sql import functions as F, Row
 from pyspark.sql import SparkSession, Window
 from pyspark.sql.functions import pandas_udf, PandasUDFType, udf, col, lit, desc, floor, monotonically_increasing_id
-from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format, expr, window, any_value
+from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format, expr, window, any_value, first_value, last_value
 from pyspark.sql.functions import posexplode, explode, input_file_name, col, concat_ws
 
 from datetime import datetime
@@ -57,21 +57,23 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
     
     #run core pipeline
     df_wf = batch_tts(df_processed)
-    
+
+    # 7. Join the assembled speech back to the original DataFrame.
+    #df_wf = df_processed.join(transformed.select("window","request_id", "speech"), on=["window","request_id"], how="left")
     # save processed speech to disk
     df_wf.foreach(write_row)
    
 
 def batch_tts(microBatchDF):
     # if microBatchDF.rdd.isEmpty():
-    #     return
+    #     return microBatchDF.withColumn("sorted_waveforms", "select window")
 
         # Apply UDF (returns an array of structs)
-    df_chunks = microBatchDF.select("window", "request_id", "text")\
+    df_chunks = microBatchDF.select("timestamp", "request_id", "text")\
                             .withColumn("chunks", split_text_into_chunks_udf(col("text")))
 
     # Explode chunks into multiple rows
-    df_exploded = df_chunks.select("window", "request_id", posexplode("chunks").alias("index", "sentence")) 
+    df_exploded = df_chunks.select("timestamp", "request_id", posexplode("chunks").alias("index", "sentence")) 
                           # .select("*","chunk.*")    
     # #FORK: only text continues forward. tables and figures to be implemented in different pipeline
 
@@ -104,14 +106,14 @@ def batch_tts(microBatchDF):
 
 
     # Apply the function using applyInPandas
-    chunks = df_exploded.groupBy("window", "request_id").applyInPandas(cum_text_volume, sentences_schema)
+    chunks = df_exploded.groupBy("timestamp", "request_id").applyInPandas(cum_text_volume, sentences_schema)
 
 
 
     
     # 4. Repartition by request_id and part to distribute the workload.
     repartitioned = chunks.withColumn('part', floor(col('cum_text_volume')/lit(conf.text_volume_max))) \
-                          .repartition("window","request_id", "part")
+                          .repartition("timestamp","request_id", "part")
     
 
     # options: 
@@ -121,7 +123,57 @@ def batch_tts(microBatchDF):
     # perform the TTS and vocoder inference
     processed = repartitioned\
         .withColumn("prediction", predict_batch_udf(col("sentence"))) \
-        .select("*", "prediction.*")
+        .select("*", "prediction.*")\
+        
+
+    assembled = processed#.withColumn("ts",  expr("window.start")) \
+                         #.withWatermark("ts", "10 seconds")\
+
+                      
+                        
+    #window("ts", "5 seconds")
+
+    collected = assembled.withWatermark("timestamp", "10 minutes") \
+                         .groupBy(window(col("timestamp"), "5 seconds"), col("request_id"))\
+                         .agg(F.sort_array(F.collect_list(F.struct("index", "waveform")), asc=True).alias("sorted_waveforms"))
+    #F.sort_array(F.struct("index", "waveform"), asc=True)   #, col("request_id"), col("timestamp")
+
+    collected.select("window", "request_id", F.slice("sorted_waveforms",1,5))\
+                .writeStream\
+                .format("console")\
+                .option("truncate", True)\
+                .outputMode("complete") \
+                .start()  
+
+    # microBatchDF.writeStream\
+    #             .format("console")\
+    #             .option("truncate", True)\
+    #             .outputMode("complete") \
+    #             .start()  
+    # 7. Join the assembled speech back to the original DataFrame.
+    df_wf = collected.select("window", "request_id", F.flatten("sorted_waveforms.waveform").alias("speech"))
+    # df_wf.writeStream\
+    #             .format("console")\
+    #             .option("truncate", True)\
+    #             .outputMode("append") \
+    #             .start()  
+
+    df_wf.select("window", "request_id", F.slice("speech",1,6))\
+            .writeStream\
+            .format("console")\
+            .option("truncate", True)\
+            .outputMode("complete") \
+            .start()  
+
+    return df_wf 
+
+    
+    #.withColumn("speech", concat_waveforms(F.col("sorted_waveforms"))).drop("sorted_waveforms")
+    #return processed   
+
+
+
+
         # .withColumn("mel_lengths", "prediction.mel_lengths") \
         # .withColumn("seq_len", "prediction.seq_len")
 
@@ -129,26 +181,14 @@ def batch_tts(microBatchDF):
                
     #processed.show()
 
-    # 6. Reassemble: Group by request and sort by index to concatenate the waveform.
-    assembled = processed.groupBy("window","request_id")
-                         
-    #.orderBy("index")
-    
+    # 6. Reassemble: Group by request and sort by index to concatenate the waveform.    
+ #.orderBy("index")
     # .agg(
     #     F.sort_array(F.collect_list(F.struct("index", "waveform")), asc=True).alias("sorted_waveforms")
     # )
-    
-    collected = assembled.agg(F.sort_array(F.collect_list(F.struct("index", "waveform")), asc=True).alias("sorted_waveforms"))
-    collected = collected.withColumn("speech", F.flatten("sorted_waveforms.waveform"))
-    
-    #.withColumn("speech", concat_waveforms(F.col("sorted_waveforms"))).drop("sorted_waveforms")
 
     #collected.show()
-  
-    # 7. Join the assembled speech back to the original DataFrame.
-    result = microBatchDF.join(collected.select("window","request_id", "speech"), on=["window","request_id"], how="left")
     #result.show()
-    return result
 
     # wf = processed.withWatermark("timestamp", "1 minute") \
     #     .groupBy("timestamp", "request_id") \
@@ -176,31 +216,93 @@ def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
         .option("kafka.bootstrap.servers", kafka_servers) \
         .option("subscribe", kafka_topic) \
         .option("startingOffsets", "earliest") \
-        .option("failOnDataLoss", "false") \
-        .load()
-
+        .option("failOnDataLoss", "true") \
+        .load() \
+        
+# .option("groupId", "fixed_consumer_group")\
     # Extract value and cast to string (assuming JSON input)
     df_requests = df.selectExpr("CAST(key AS STRING) as request_id",
-                                 "CAST(value AS STRING) as cont",
-                                 "timestamp as timestamp") \
-        .withWatermark("timestamp", "1 minute") \
-        .groupBy(window(col("timestamp"), "1 minute"), "request_id") \
-        .agg(any_value("cont").alias("content"))
+                                "CAST(value AS STRING) as content",
+                                "timestamp as timestamp") \
+
+        # .groupBy(window(col("timestamp"), "5 seconds"), col("request_id")) \
+        # .agg(any_value("cont", True).alias("content"), F.count("*").alias("batch_size"))\
+        
+
+    #.filter(F.col("content").isNotNull())  # Ignore null rows
     #F.min("timestamp").alias("timestamp"), 
 
+    # df_requests.writeStream\
+    #             .format("console")\
+    #             .option("truncate", True)\
+    #             .outputMode("append") \
+    #             .start()
+    
     # preprocess LaTeX text 
     df_processed = df_requests.withColumn("processed", preprocess_text_udf(col("content")))
 
     # Extract text, tables, and figures into separate columns
     df_processed = df_processed.select(
-        "window","request_id",
+        col("timestamp"),col("request_id"),
         df_processed["processed.text"].alias("text"),
         df_processed["processed.tables"].alias("tables"),
         df_processed["processed.figures"].alias("figures")
     )
 
     #run core pipeline
-    df_wf = df_processed.transform(batch_tts)
+    transformed = df_processed.transform(batch_tts)
+
+    # #transformed = batch_tts(df_processed)
+    # df_processed.select(col("timestamp"), col("request_id"))\
+    #         .writeStream\
+    #         .format("console")\
+    #         .option("truncate", False)\
+    #         .outputMode("append") \
+    #         .start()
+    #         #.trigger(availableNow=True) \
+    
+    transformed.select("window", "request_id", F.expr("slice(speech, 1, 6)"))\
+        .writeStream\
+        .format("console")\
+        .option("truncate", False)\
+        .outputMode("append") \
+        .start()
+
+    df_wf = df_processed.join(transformed, 
+                              [df_processed["request_id"] == transformed["request_id"], 
+                               df_processed["timestamp"] >= transformed["window.start"],
+                            #    df_processed["timestamp"] <= transformed["window.end"]
+                             ],
+                              how="Left")\
+                              .select(df_processed["*"], transformed["speech"])
+    
+
+# Stream-stream LeftOuter join between two streaming DataFrame/Datasets is not supported
+#  without a 
+# watermark in the join keys, 
+# or a watermark on the nullable side 
+# and an appropriate range condition;
+
+    df_wf.withColumn("speech", F.expr("slice(speech, 1, 7)"))\
+        .writeStream\
+        .format("console")\
+        .option("truncate", True)\
+        .outputMode("append") \
+        .start()
+
+#     df_wf = df_processed.join(transformed, 
+#                               [df_processed.timestamp == transformed.window.start,
+#                                df_processed.request_id == transformed.request_id], 
+#                                how="Inner")
+#   expr("""
+#     clickAdId = impressionAdId AND
+#     clickTime >= transformed.window.start AND
+#     clickTime <= impressionTime + interval 1 hour
+#     """),
+
+
+    #df_wf = transformed
+
     #df_wf = pipeline_core(df_requests)
     # Define output sink
     import time
