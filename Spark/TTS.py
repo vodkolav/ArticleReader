@@ -25,7 +25,8 @@ def main():
     parser.add_argument("--output", help="Path to output data (batch mode)")
     parser.add_argument("--kafka-topic", help="Kafka topic (streaming mode)")
     parser.add_argument("--kafka-servers", help="Kafka bootstrap servers (streaming mode)")
-    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet","console"], help="Output type for streaming")
+    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet","console"], 
+                        action='append', help="Output type for streaming")
     
     args = parser.parse_args()
 
@@ -43,8 +44,8 @@ def main():
 
 
     elif args.mode == "stream":
-        if not args.kafka_topic or not args.kafka_servers or not args.output_type:
-            print("Error: Streaming mode requires --kafka-topic, --kafka-servers, and --output-type")
+        if not args.kafka_topic or not args.kafka_servers or not args.output_type or not args.output:
+            print("Error: Streaming mode requires --kafka-topic, --kafka-servers, --output-type and --output")
             return
         
         #print("Starting kafka producer")
@@ -60,7 +61,7 @@ def main():
         #print("Producer started.")
 
         # Run streaming in a separate thread so it can be stopped gracefully
-        stream_thread = threading.Thread(target=process_stream, args=(args.kafka_topic, args.kafka_servers, args.output_type))
+        stream_thread = threading.Thread(target=process_stream, args=(args.kafka_topic, args.kafka_servers, args.output_type, args.output))
 
         #process_stream(args.kafka_topic, args.kafka_servers, args.output_type)
 

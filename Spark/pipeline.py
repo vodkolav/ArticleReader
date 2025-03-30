@@ -60,6 +60,8 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
     
     # save processed speech to disk
     df_wf.foreach(write_row)
+
+
 def tts_core(df_texts):   
  
     # Apply UDF (returns an array of structs)
@@ -82,9 +84,9 @@ def tts_core(df_texts):
 
     # for test runs I want to process just 5 chunks per request
     if conf.test_run:
-        chunks = chunks.orderBy("index", "request_id").offset(100).limit(8)
+        chunks = chunks.orderBy("index", "request_id").offset(100).limit(15)
 
-    chunks.show()
+    #chunks.show()
 
     # Partition by cumulative text volume
     text_volume_window = (Window.orderBy(desc('text_len'))
@@ -99,30 +101,43 @@ def tts_core(df_texts):
 
     # perform the TTS and vocoder inference
     processed = step1.repartition("part") \
-        .withColumn("prediction", predict_batch_udf(col("sentence"))).cache()\
-            .select("timestamp","request_id", "index", "sentence", "text_len", "prediction.*") \
-                .sort("index")
+        .withColumn("prediction", predict_batch_udf(col("sentence")))\
+        .cache()\
+        .select("*", "prediction.*")\
+        .drop("prediction") \
+        .sort("index")
+    
+    processed.show()
+
 
     # combine into single waveform
-    wf = processed.groupBy("timestamp","request_id")\
+    df_wf = processed.groupBy("timestamp","request_id")\
         .agg(flatten(collect_list(col("waveform"))).alias("speech"))\
             
     # TODO: maybe we can (should?) recombine this with df_processed? 
-    return wf
+    return df_wf, processed
 
 def stream_batch(batchDF, batchId):
 
     batchDF.show()
-    df_wf = tts_core(batchDF)
+    df_wf, processed = tts_core(batchDF)
     print("batch id: ", batchId)
     df_wf.show()
-    output_schema = batchDF.schema    
-    df_wf.foreach(write_row)
+    stream_outputs(df_wf)
+    if conf.test_run:
+        processed.write\
+             .mode('append')\
+             .partitionBy("timestamp","request_id")\
+             .parquet(conf.output_path + "/intermediate/parquet/")
     #df_wf.groupBy("request_id").applyInPandas(write_request, schema=output_schema)
 
 
-def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
+def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
     print("Streaming mode processing turned on")
+
+    conf.output_types = output_types
+    conf.output_path = output_path
+
     spark = get_spark_session(conf.app_name, streaming=True)
 
     # Read from Kafka
@@ -158,21 +173,22 @@ def process_stream(kafka_topic, kafka_servers, output_type, output_path=None):
 
     query = df_processed \
             .writeStream \
-            .queryName(f"{output_type}_{job_time}") \
+            .queryName(f"{output_types}_{job_time}") \
             .foreachBatch(stream_batch) \
             .outputMode("append") \
-            .option("checkpointLocation", "/tmp/Spark/checkpoints/" + output_type + "/" + job_time) \
+            .option("checkpointLocation", "/tmp/Spark/checkpoints/")\
             .trigger(processingTime="5 seconds")\
             .start()
     
+    # + output_type + "/" + job_time) \
 
     query.awaitTermination()
     print("Spark streaming turned off")
 
 
-def stream_outputs():
-  
-    if output_type == "kafka":
+def stream_outputs(df_wf):
+
+    if "kafka" in conf.output_types:
         pass
         # query = df.selectExpr("CAST(value AS STRING) AS key", "value") \
         #     .writeStream \
@@ -184,45 +200,42 @@ def stream_outputs():
  
     # save processed speech to disk
     # .outputMode("complete").trigger(processingTime="10 seconds") \
-    elif output_type == "hdfs" or output_type == "fs":
-        query = df_wf \
-            .writeStream \
-            .queryName(f"{output_type}_{job_time}") \
-            .foreachBatch(custom_write_function) \
-            .outputMode("append") \
-            .option("checkpointLocation", "/tmp/Spark/checkpoints/" + output_type + "/" + job_time) \
-            .start()
-        
-    elif output_type == "parquet":
-        query = df_wf.writeStream \
-            .queryName(f"{output_type}_{job_time}") \
-            .outputMode("append") \
-            .format("parquet") \
-            .option("path", conf.output_path ) \
-            .option("checkpointLocation", "/tmp/Spark/checkpoints/" + output_type + "/" + job_time) \
-            .start()
-             # Force re-polling Kafka every 10s               .trigger(processingTime="10 seconds") \
+    if "hdfs" in conf.output_types or "fs" in conf.output_types:
+        df_wf.foreach(write_row)
+        # query = df_wf \
+        #     .writeStream \
+        #     .foreachBatch(custom_write_function) \
+        #     .outputMode("append") \
+        #     .option("checkpointLocation", "/tmp/Spark/checkpoints/" )\
+        #     .start()
+        #            .queryName(f"{output_type}_{job_time}") \+ output_type + "/" + job_time) \
 
-    elif output_type == "spark_pipeline":
+    if "parquet" in conf.output_types:
+        df_wf.write\
+             .mode('append')\
+             .partitionBy("timestamp","request_id")\
+             .parquet(conf.output_path + "/parquet/")
+
+        #query = df_wf.writeStream \
+            # .outputMode("append") \
+            # .format("parquet") \
+            # .option("path", conf.output_path ) \
+            # .option("checkpointLocation", "/tmp/Spark/checkpoints/" + output_type + "/" + job_time) \
+            # .start()
+             # Force re-polling Kafka every 10s               .trigger(processingTime="10 seconds") \
+            #.queryName(f"{output_type}_{job_time}") \
+
+    if "spark_pipeline" in conf.output_types:
         pass
 
-    elif output_type == "console":
-        query = df_wf.writeStream\
-            .format("console")\
-            .outputMode("append") \
-            .option("truncate", False) \
-            .start()
+    if "console" in conf.output_types:
+        pass
         
         # query = df.writeStream \
         #     .format("memory") \
         #     .queryName("waveform_table") \
         #     .start()
-    query.explain()
+
     # while query.isActive:
     #     print(query.lastProgress)
-    #     time.sleep(10)
-    # Wait for termination
-    
-    spark.streams.awaitAnyTermination()
-    #query.awaitTermination()
-    print("Spark streaming turned off")
+    #     time.sleep(10)  

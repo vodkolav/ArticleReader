@@ -32,7 +32,9 @@
             "args": ["--mode", "stream", 
             "--kafka-topic", "articles", 
             "--kafka-servers", "localhost:9092",
-            "--output-type", "fs"],
+            "--output-type", "fs",
+            "--output-type", "parquet",
+            "--output", "output/"],
             "cwd": "${workspaceFolder}"
         }
     ]

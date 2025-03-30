@@ -50,7 +50,8 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
 
   batch_df.loc[:,"seq_len"] = batch_df.sentences.map(narrator.seq_len)
   batch_df.sort_values("seq_len", ascending=False, inplace=True)
-
+  
+  batch_df.head(15)
 
   waveforms, mel_lengths = narrator.infer(batch_df.sentences)
 
@@ -97,7 +98,7 @@ def write_row(row):
     speech = row["speech"]
     timestamp = row["timestamp"]
     # For example, write a file named using the request_id and timestamp.
-    output_path = conf.output_path + f"/{request_id}_{timestamp}.wav"
+    output_path = conf.output_path + f"/{request_id}.wav"
     save_to_disk(speech, output_path)
 
 
@@ -178,7 +179,7 @@ chunk_schema = ArrayType(StringType())
 
 @pandas_udf(chunk_schema)
 def split_text_into_chunks_udf(text_series: pd.Series) -> pd.DataFrame:
-    chunks = text_series.apply(udf_split_text)  # Apply function row-wise
+    chunks = text_series.apply(udf_split_text, chunk_size=conf.chunk_size)  # Apply function row-wise
     
     return chunks # cum_text_volume(chunks)
 

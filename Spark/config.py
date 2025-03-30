@@ -12,16 +12,16 @@ from utils import zip_project
 app_name="TTS CPU Inference"
 test_run = True
 text_volume_max = 150  # will need to be tuned for specific cluster machines
+chunk_size = 400
 output_path="output/"
+output_types = ["fs","parquet"]
 articles_topic="articles"
+# simulating a cluster with 2 workers
+workers = 2 #1 #
+cpus_limit =  int(os.cpu_count()/ workers) -1 
+mem_limit = "2g" # prod: "16g"/ workers
 
 def get_spark_session(app_name="TTS CPU Inference", streaming=False):
-
-    # simulating a cluster with 2 workers
-    workers = 1 #2 #
-    cpus_limit =  int(os.cpu_count()/ workers) -1 
-    mem_limit = "2g" # prod: "16g"/ workers
-
     # Configure PyTorch for CPU parallelism
     torch.set_num_threads(cpus_limit)
 
@@ -33,7 +33,7 @@ def get_spark_session(app_name="TTS CPU Inference", streaming=False):
         .config("spark.executor.memory", mem_limit) \
         .config("spark.task.cpus", cpus_limit) \
         .config("spark.dynamicAllocation.enabled", "false") \
-        .config("spark.sql.shuffle.partitions", "1") \
+        .config("spark.sql.shuffle.partitions", workers) \
         .config("spark.streaming.stopGracefullyOnShutdown", "true") \
         .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
         .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2") \
