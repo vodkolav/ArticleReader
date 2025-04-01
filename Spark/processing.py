@@ -96,7 +96,6 @@ def write_row(row):
     # Implement your custom write logic here, e.g.:
     request_id = row["request_id"]
     speech = row["speech"]
-    timestamp = row["timestamp"]
     # For example, write a file named using the request_id and timestamp.
     output_path = conf.output_path + f"/{request_id}.wav"
     save_to_disk(speech, output_path)
@@ -110,9 +109,8 @@ def write_request(pdf: pd.DataFrame) -> pd.DataFrame:
         # Implement your custom write logic here, e.g.:
         request_id = row["request_id"]
         speech = row["speech"]
-        timestamp = row["timestamp"]
         # For example, write a file named using the request_id and timestamp.
-        output_path = conf.output_path + f"/{request_id}_{timestamp}.wav"
+        output_path = conf.output_path + f"/{request_id}.wav"
         save_to_disk(speech, output_path)
     # Optionally, return the input PDF or an empty DataFrame.
     return pdf  # or pd.DataFrame([], columns=pdf.columns)

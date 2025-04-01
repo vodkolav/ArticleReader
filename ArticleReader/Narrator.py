@@ -131,6 +131,7 @@ class Narrator:
         # incoming: batch of chunks (~sentences)
         print("     running TTS model")
         print("     batch size: ", len(batch))
+        print("self.tts.hparams.max_decoder_steps:", self.tts.hparams.max_decoder_steps )
         output = self.tts.encode_batch(batch)
         
         if output is not None: 
