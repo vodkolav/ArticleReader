@@ -1,26 +1,24 @@
-# 4. Pipeline Logic (pipeline.py)
+# Pipeline Logic (pipeline.py)
 
 # This handles both batch and streaming.
 
 from config import get_spark_session
 import config as conf
-from processing import compute_waveform_lengths, concatenate_waveforms, cum_text_volume, output_sound, save_to_disk, custom_write_function
-from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf , sentences_schema, concat_waveforms, write_request, write_row
+from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf, write_row
 
-from pyspark.sql import functions as F, Row
-from pyspark.sql import SparkSession, Window
-from pyspark.sql.functions import pandas_udf, PandasUDFType, udf, col, lit, desc, floor, monotonically_increasing_id
-from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format, expr, window, any_value
-from pyspark.sql.functions import posexplode, explode, input_file_name, col, concat_ws, spark_partition_id
+from pyspark.sql import functions as F
+from pyspark.sql import Window
+from pyspark.sql.functions import col, lit, desc, floor
+from pyspark.sql.functions import collect_list, flatten, current_timestamp
+from pyspark.sql.functions import posexplode, col, concat_ws, spark_partition_id
 
-from datetime import datetime
 
 def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
     spark = get_spark_session(conf.app_name)  
 
     from processing import processed_schema
 
-    empty_df = spark.createDataFrame([], processed_schema) # spark is the Spark Session
+    empty_df = spark.createDataFrame([], processed_schema) 
     
     empty_df.show()
     df_wf = empty_df.transform(tts_core)
@@ -30,7 +28,7 @@ def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="ou
     df_wf.foreach(write_row)
 
 
-def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
+def process_batch(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
  
     spark = get_spark_session(conf.app_name)    
     
@@ -54,6 +52,7 @@ def process_file(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="o
         df_processed["processed.tables"].alias("tables"),
         df_processed["processed.figures"].alias("figures")
     )
+    #FORK: only text continues forward. tables and figures to be implemented in different pipeline
     
     #run core pipeline
     df_wf = tts_core(df_processed)
@@ -72,7 +71,6 @@ def tts_core(df_texts):
         "request_id",
         posexplode("chunks").alias("index", "sentence")   # This creates multiple rows per file
     )
-    # #FORK: only text continues forward. tables and figures to be implemented in different pipeline
 
     chunks = df_chunks\
         .selectExpr("request_id", "index", " sentence ",  " length(sentence) as text_len")
@@ -86,8 +84,6 @@ def tts_core(df_texts):
     if conf.test_run:
         chunks = chunks.orderBy("index", "request_id").offset(120).limit(conf.test_size)
 
-    #chunks.show()
-
     # Partition by cumulative text volume
     text_volume_window = (Window.orderBy(desc('text_len'))
                 .rowsBetween(Window.unboundedPreceding, 0))
@@ -97,8 +93,7 @@ def tts_core(df_texts):
         .withColumn('part', floor(col('cum_text_volume')/lit(conf.text_volume_max))) 
   
     nparts =  step1.select((lit(1) + F.max("part")).alias("npart")).first()
-    # this is bad. need to find way to bypass this pipeline leak   
-
+    # this is bad. need to find way to bypass this pipeline leak
     np = nparts[0] if nparts[0] else 1
 
     # perform the TTS and vocoder inference
@@ -107,18 +102,13 @@ def tts_core(df_texts):
 
     step1.withColumn("partitionId", spark_partition_id())\
          .show(110)
-    
-        #      .groupBy("partitionId")\
-        #  .agg(collect_list(col("part")))\
-        #  .orderBy("partitionId")\
 
     print(f"Number of partitions: {repartitioned.rdd.getNumPartitions()}")
     
     processed = repartitioned\
         .withColumn("prediction", predict_batch_udf(col("sentence")))\
         .select("*", "prediction.*")\
-        .drop("prediction") \
-        #.sort("index")
+        .drop("prediction") 
     
     processed.withColumn("processed",col("seq_len")).show()
 
@@ -135,7 +125,6 @@ def tts_core(df_texts):
                         concat_ws(",",col("wfs.index")).alias("order"))                        
 
     df_wf.show()
-
     # TODO: maybe we can (should?) recombine this with df_processed? 
     return df_wf, processed
 
@@ -156,7 +145,6 @@ def stream_batch(batchDF, batchId):
              .write\
              .mode('append')\
              .csv(conf.output_path + "/df_wf/csv/")
-    #df_wf.groupBy("request_id").applyInPandas(write_request, schema=output_schema)
 
 
 def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
@@ -191,13 +179,9 @@ def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
         df_processed["processed.tables"].alias("tables"),
         df_processed["processed.figures"].alias("figures")
     )
-    # import time
-    # job_time = f"{int(time.time())}"  
-    #run core pipeline
-    #df_wf = df_processed.transform(batch_tts)
-    #df_wf = pipeline_core(df_requests)
-    # Define output sink
+    #FORK: only text continues forward. tables and figures to be implemented in different pipeline
 
+    # Define output sink
     query = df_processed \
             .writeStream \
             .foreachBatch(stream_batch) \
@@ -205,7 +189,6 @@ def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
             .option("checkpointLocation", "/tmp/Spark/checkpoints/")\
             .trigger(processingTime="5 seconds")\
             .start()
-    # + output_type + "/" + job_time) \
 
     query.awaitTermination()
     print("Spark streaming turned off")
@@ -215,25 +198,10 @@ def stream_outputs(df_wf):
 
     if "kafka" in conf.output_types:
         pass
-        # query = df.selectExpr("CAST(value AS STRING) AS key", "value") \
-        #     .writeStream \
-        #     .format("kafka") \
-        #     .option("kafka.bootstrap.servers", kafka_servers) \
-        #     .option("topic", "processed_waveforms") \
-        #     .option("checkpointLocation", "/tmp/kafka_checkpoint/") \
-        #     .start()
  
     # save processed speech to disk
-    # .outputMode("complete").trigger(processingTime="10 seconds") \
     if "hdfs" in conf.output_types or "fs" in conf.output_types:
         df_wf.foreach(write_row)
-        # query = df_wf \
-        #     .writeStream \
-        #     .foreachBatch(custom_write_function) \
-        #     .outputMode("append") \
-        #     .option("checkpointLocation", "/tmp/Spark/checkpoints/" )\
-        #     .start()
-        #            .queryName(f"{output_type}_{job_time}") \+ output_type + "/" + job_time) \
 
     if "parquet" in conf.output_types:
         df_wf.write\
@@ -241,26 +209,11 @@ def stream_outputs(df_wf):
              .partitionBy("request_id")\
              .parquet(conf.output_path + "/parquet/")
 
-        #query = df_wf.writeStream \
-            # .outputMode("append") \
-            # .format("parquet") \
-            # .option("path", conf.output_path ) \
-            # .option("checkpointLocation", "/tmp/Spark/checkpoints/" + output_type + "/" + job_time) \
-            # .start()
-             # Force re-polling Kafka every 10s               .trigger(processingTime="10 seconds") \
-            #.queryName(f"{output_type}_{job_time}") \
-
     if "spark_pipeline" in conf.output_types:
         pass
 
     if "console" in conf.output_types:
         pass
-        
-        # query = df.writeStream \
-        #     .format("memory") \
-        #     .queryName("waveform_table") \
-        #     .start()
-
     # while query.isActive:
     #     print(query.lastProgress)
     #     time.sleep(10)  

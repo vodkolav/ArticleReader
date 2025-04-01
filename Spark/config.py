@@ -1,4 +1,4 @@
-# 2. Spark & Kafka Configurations (config.py)
+# Spark & Kafka Configurations (config.py)
 
 # Define a function to create a Spark session that supports both batch and streaming.
 import os

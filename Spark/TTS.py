@@ -1,4 +1,4 @@
-# 5. Entry Point (main.py)
+#Entry Point (main.py)
 
 # This allows switching between batch and streaming dynamically.
 import os
@@ -7,7 +7,7 @@ sys.path.append(os.getcwd())
 os.environ["PYARROW_IGNORE_TIMEZONE"] = '1'
 import argparse
 import threading
-from pipeline import process_file, process_stream, batch_empty
+from pipeline import process_batch, process_stream, batch_empty
 from streaming import KafkaProducer
 import logging
 
@@ -34,7 +34,7 @@ def main():
         if not args.input or not args.output:
             print("Error: Batch mode requires --input and --output")
             return
-        process_file(args.input, args.output)
+        process_batch(args.input, args.output)
     
     if args.mode == "batch_empty":
         if not args.input or not args.output:
@@ -51,7 +51,6 @@ def main():
         #print("Starting kafka producer")
         # Configuration for Kafka
         config = {'bootstrap.servers': args.kafka_servers}
-        src = 'data'
 
         # Initialize the producer
         #producer = KafkaProducer(topic=args.kafka_topic, source = src, config=config)
