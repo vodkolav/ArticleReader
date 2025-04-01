@@ -1,7 +1,5 @@
 #!/bin/bash
 
-
-
 # Variables
 ENV_YAML="pyspark_TTS.yml"
 ENV_NAME="pyspark_TTS"
@@ -45,18 +43,6 @@ conda env config vars set PYSPARK_DRIVER_PYTHON=ipython
 conda env config vars set PYSPARK_PYTHON=/home/linuxu/anaconda3/envs/$ENV_NAME/bin/python
 #export PATH=/usr/local/cuda-11.7/bin${PATH:+:${PATH}}
 #export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-
-
-
-# # Add environment variables to the environment activation script
-# echo "Configuring environment variables..."
-# ENV_ACTIVATE_SCRIPT=$(conda env list | grep $ENV_NAME | awk '{print $2}')/etc/conda/activate.d/env_vars.sh
-# mkdir -p $(dirname $ENV_ACTIVATE_SCRIPT)
-# echo "export SPARK_HOME=$SPARK_HOME" > $ENV_ACTIVATE_SCRIPT
-# #echo "export JAVA_HOME=$JAVA_HOME" >> $ENV_ACTIVATE_SCRIPT
-# echo "export PYSPARK_PYTHON=python" >> $ENV_ACTIVATE_SCRIPT
-# echo "export PYSPARK_DRIVER_PYTHON=python" >> $ENV_ACTIVATE_SCRIPT
-
 
 
 # Register Jupyter kernel
