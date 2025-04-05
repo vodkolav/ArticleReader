@@ -25,16 +25,16 @@ def main():
     parser.add_argument("--output", help="Path to output data (batch mode)")
     parser.add_argument("--kafka-topic", help="Kafka topic (streaming mode)")
     parser.add_argument("--kafka-servers", help="Kafka bootstrap servers (streaming mode)")
-    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet","console"], 
+    parser.add_argument("--output-type", choices=["kafka", "hdfs", "fs", "spark_pipeline", "parquet","console", "csv"], 
                         action='append', help="Output type for streaming")
     
     args = parser.parse_args()
 
     if args.mode == "batch":
-        if not args.input or not args.output:
-            print("Error: Batch mode requires --input and --output")
+        if not args.input or not args.output_type or not args.output:
+            print("Error: Batch mode requires --input --output_type and --output")
             return
-        process_batch(args.input, args.output)
+        process_batch(args.input, args.output_type, args.output)
     
     if args.mode == "batch_empty":
         if not args.input or not args.output:

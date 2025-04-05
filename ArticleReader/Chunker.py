@@ -102,14 +102,15 @@ class Chunker:
         res = []  # ss[0]]
         for i in range(len(ss)):
             if ss and len(ss[i]) > self.max_len:
-                res += self.breakByPeriods(ss[i])
+                par = self.breakByPeriods(ss[i])
                 # res += [ss[i]]
                 # continue
             # if res and len(res[-1]) + 3 + len(ss[i]) < max_len:
             #   res[-1] = res[-1] + r"  \n" + ss[i]
             else:
-                res += [ss[i]]
-            res += ["  \n\n"]
+                par = [ss[i]]
+            par[-1] += "  \n"
+            res += par
         return [r for r in res if len(r) > 3]
 
     def split_text_into_chunks(self, text):
@@ -141,8 +142,7 @@ class Chunker:
         return df.iloc[start : start +batch_size]
 
     def get_test_batch(self, chunks=20, start=0):
-        df = self.as_pandas()   
-        return df.iloc[start : start + chunks]
+        return self.chunks[start : start + chunks]
     
     def get_all_chronological(self):
         return self.as_pandas()

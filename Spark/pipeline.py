@@ -9,9 +9,9 @@ from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 from pyspark.sql.functions import col, lit, desc, floor
-from pyspark.sql.functions import collect_list, flatten, current_timestamp
+from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format
 from pyspark.sql.functions import posexplode, col, concat_ws, spark_partition_id
-
+from pyspark import StorageLevel
 
 def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
     spark = get_spark_session(conf.app_name)  
@@ -28,37 +28,36 @@ def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="ou
     df_wf.foreach(write_row)
 
 
-def process_batch(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
+def process_batch(input_file = "data/arXiv-2106.04624v1/main.tex", output_types=["csv"],  output_path="output/"):
  
+    conf.output_types = output_types
+    conf.output_path = output_path
+
     spark = get_spark_session(conf.app_name)    
     
     # Read text files into DataFrame with columns "filename", "request_id" and "content"
     # input_file can also be a directory of files
     # add request_id (a time stamp) for tracking jobs in cluster
-    df_requests = spark.read.text(input_file).withColumn("request_id", F.element_at(F.split(F.input_file_name(), '/'),-2))\
-                    .withColumn("timestamp",current_timestamp())\
-                    .groupBy("timestamp","request_id") \
-                    .agg(concat_ws("\n", collect_list("value")).alias("content"))\
-                    .selectExpr("*", "struct(timestamp as start, timestamp as end) as window") \
+        
+    # Read whole files as (filename, content) pairs
+    rdd = spark.sparkContext.wholeTextFiles(input_file)
+
+    # Convert RDD to DataFrame
+    df_requests = rdd.toDF(["filename", "content"])\
+            .withColumn("timestamp",current_timestamp())\
+            .withColumn("request_id", concat_ws(".",
+                F.element_at(F.split("filename", '/'),-2),
+                date_format("timestamp","yyMMdd_HHmmss")))
 
     df_requests.show()                     
     # preprocess LaTeX text 
-    df_processed = df_requests.withColumn("processed", preprocess_text_udf(col("content")))
-
-    # Extract text, tables, and figures into separate columns
-    df_processed = df_processed.select(
-        "timestamp", "window","request_id",
-        df_processed["processed.text"].alias("text"),
-        df_processed["processed.tables"].alias("tables"),
-        df_processed["processed.figures"].alias("figures")
-    )
+    df_processed = preprocess(df_requests)
     #FORK: only text continues forward. tables and figures to be implemented in different pipeline
     
     #run core pipeline
-    df_wf = tts_core(df_processed)
-    
-    # save processed speech to disk
-    df_wf.foreach(write_row)
+    df_wf, processed = tts_core(df_processed)
+    multi_outputs(df_wf)
+    save_intermediate(processed)
 
 
 def tts_core(df_texts):   
@@ -77,7 +76,7 @@ def tts_core(df_texts):
     
     chunks.groupby(col("request_id"))\
           .agg(F.count("sentence").alias("sentences"))\
-          .select("request_id","sentences")\
+          .select("request_id", "sentences")\
           .show()
 
     # for test runs I want to process just 5 chunks per request
@@ -99,30 +98,33 @@ def tts_core(df_texts):
     # perform the TTS and vocoder inference
     repartitioned = step1.repartition(np, col("part")) #,10, 
     
-
-    step1.withColumn("partitionId", spark_partition_id())\
-         .show(110)
+    #withColumn("partitionId", spark_partition_id())\
+    step1\
+         .orderBy("cum_text_volume").show(110)
 
     print(f"Number of partitions: {repartitioned.rdd.getNumPartitions()}")
     
     processed = repartitioned\
         .withColumn("prediction", predict_batch_udf(col("sentence")))\
         .select("*", "prediction.*")\
-        .drop("prediction") 
-    
-    processed.withColumn("processed",col("seq_len")).show()
+        .drop("prediction")\
+        .persist(StorageLevel.MEMORY_ONLY) 
+    #.withColumn("processed",col("seq_len")).
+    processed.orderBy("cum_text_volume").show(110)
 
-    repartagain = processed.repartition(2,col("request_id")) 
+
+    nreqs =  step1.select((lit(1) + F.max("request_id"))).first()
+    # this is bad. need to find way to bypass this pipeline leak
+    nr = nreqs[0] if nreqs[0] else 1
+    repartagain = processed.repartition(nr,col("request_id"))
 
     df_wf = repartagain\
                 .groupby("request_id")\
-                .agg(F.sort_array(
-                     F.collect_list(
-                          F.struct("request_id","index", "waveform")))
-                    .alias("wfs"))\
+                .agg(F.sort_array(F.collect_list(
+                     F.struct("request_id","index", "waveform", "sentence"))).alias("wfs"))\
                 .select("request_id",
                         flatten("wfs.waveform").alias("speech"),
-                        concat_ws(",",col("wfs.index")).alias("order"))                        
+                        concat_ws("",col("wfs.sentence")).alias("text"))
 
     df_wf.show()
     # TODO: maybe we can (should?) recombine this with df_processed? 
@@ -134,17 +136,16 @@ def stream_batch(batchDF, batchId):
     df_wf, processed = tts_core(batchDF)
     print("batch id: ", batchId)
     #df_wf.show()
-    stream_outputs(df_wf)
+    multi_outputs(df_wf)
+    save_intermediate(processed)
+
+def save_intermediate(processed):
     if conf.test_run:
         processed.drop("waveform")\
              .write\
+             .partitionBy("request_id")\
              .mode('append')\
              .csv(conf.output_path + "/intermediate/csv/")
-        
-        df_wf.drop("speech")\
-             .write\
-             .mode('append')\
-             .csv(conf.output_path + "/df_wf/csv/")
 
 
 def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
@@ -170,15 +171,7 @@ def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
                                  "timestamp as timestamp") \
 
     # preprocess LaTeX text 
-    df_processed = df_requests.withColumn("processed", preprocess_text_udf(col("content")))
-
-    # Extract text, tables, and figures into separate columns
-    df_processed = df_processed.select(
-        "timestamp","request_id",
-        df_processed["processed.text"].alias("text"),
-        df_processed["processed.tables"].alias("tables"),
-        df_processed["processed.figures"].alias("figures")
-    )
+    df_processed = preprocess(df_requests)
     #FORK: only text continues forward. tables and figures to be implemented in different pipeline
 
     # Define output sink
@@ -193,8 +186,23 @@ def process_stream(kafka_topic, kafka_servers, output_types, output_path=None):
     query.awaitTermination()
     print("Spark streaming turned off")
 
+def preprocess(df_requests):
+    df_processed = df_requests.withColumn("processed", preprocess_text_udf(col("content")))
 
-def stream_outputs(df_wf):
+    # Extract text, tables, and figures into separate columns
+    df_processed = df_processed.select(
+        "timestamp","request_id",
+        df_processed["processed.text"].alias("text"),
+        df_processed["processed.tables"].alias("tables"),
+        df_processed["processed.figures"].alias("figures")
+    )
+    
+    return df_processed
+
+
+def multi_outputs(df_wf):
+
+    df_wf = df_wf.persist(StorageLevel.MEMORY_ONLY)
 
     if "kafka" in conf.output_types:
         pass
@@ -208,6 +216,13 @@ def stream_outputs(df_wf):
              .mode('append')\
              .partitionBy("request_id")\
              .parquet(conf.output_path + "/parquet/")
+        
+    if "csv" in conf.output_types:
+        df_wf.drop("speech")\
+             .write\
+             .mode('append')\
+             .partitionBy("request_id")\
+             .csv(conf.output_path + "/csv/")
 
     if "spark_pipeline" in conf.output_types:
         pass

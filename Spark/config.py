@@ -12,7 +12,7 @@ from utils import zip_project
 app_name="TTS CPU Inference"
 test_run = True # False # 
 test_size = 20
-text_volume_max = 700  # will need to be tuned for specific cluster machines
+text_volume_max = 330  # will need to be tuned for specific cluster machines
 chunk_size = 80
 output_path="output/"
 output_types = ["fs","parquet"]
@@ -20,7 +20,7 @@ articles_topic="articles"
 # simulating a cluster with 2 workers
 workers = 1 # 2 #
 cpus_limit =  int(os.cpu_count()/ workers) -1 
-mem_limit = "2g" # prod: "16g"/ workers
+mem_limit = "14g" # prod: "16g"/ workers
 
 def get_spark_session(app_name="TTS CPU Inference", streaming=False):
     # Configure PyTorch for CPU parallelism

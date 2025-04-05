@@ -1,7 +1,29 @@
 
 from pylatexenc import latexwalker, latex2text, macrospec
+from pylatexenc.latexnodes.nodes import LatexNodesVisitor
 import re
-from ArticleReader.NodesVisitor import Extractor
+
+class Extractor(LatexNodesVisitor):
+    def visit_macro_node(self, node, **kwargs):
+        if node.macroname == 'label':
+            label = node.nodeargd.argnlist[0].nodelist[0].chars
+        #node.nodelist.nodelist[1].nodelist.nodelist[3].nodelist.nodelist[4].nodeargd.argnlist[0].nodelist.nodelist[0].chars
+            return {'label': label}
+
+    def visit_environment_node(self, node, **kwargs):
+        res = self.cleanup(kwargs)
+        return res
+
+    # 
+    # node.nodelist[8].nodeargd.argnlist[0].nodelist[0].chars
+    def cleanup(self,res):
+        if res is None:
+            return
+        if type(res) == dict:
+            tmp = { k:self.cleanup(v) for k,v in res.items() if self.cleanup(v) is not None}
+        else:
+            tmp = [i for i in res if i != None]
+        return tmp if tmp else None
 
 class LatexParser:
     #
@@ -191,6 +213,7 @@ class LatexParser:
         l2t_obj = latex2text.LatexNodes2Text(latex_context=self.l2t_context_db)
         # convert to text
         processed = l2t_obj.nodelist_to_text(nodelist)
+        self.save_text(processed, "dbg/processed.txt")
         return self.postprocess(processed)
 
     def postprocess(self, processed):
@@ -198,6 +221,16 @@ class LatexParser:
         # manually remove all that latex parser didn't catch
         processed = processed.replace("C⁠[4].4ex++", "").strip()
         # processed = processed.replace("si plus plus","").strip()
+
+        # eliminate newlines at the end of sentences - so that it conforms with latex rendering behavior
+        # (single newline is ignored, the next sentence continues in same paragraph )
+        processed = re.sub(r"([\.,\w]) ?\n(\w)", r"\1 \2", processed)
+
+        # eliminate spaces between end of word and period/comma (usually apears as a result of elimination of reference)
+        processed = re.sub(r"(\w) ([\.,])", r"\1\2", processed)
+
+        # shorten long newlines to just two. (those a mostly between paragraphs)
+        processed = re.sub(r"( *\n){3,}", "\n\n", processed)
 
         # shorten long spaces to just one
         processed = re.sub(r" {2,}", " ", processed)

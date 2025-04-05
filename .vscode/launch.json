@@ -19,7 +19,11 @@
             "program": "${workspaceFolder}/Spark/TTS.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "args": ["--mode", "batch_empty", "--input", "data/arXiv-2106.04624v1/main.tex", "--output", "output/"],
+            "args": ["--mode", "batch", 
+            "--input", "data/arXiv-2106.04624v1/main.tex", 
+            "--output-type", "fs",
+            "--output-type", "csv",
+            "--output", "output/"],
             "cwd": "${workspaceFolder}"
         },
         {
