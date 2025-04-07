@@ -1,11 +1,11 @@
 # Data Processing Functions (processing.py)
 
 # These functions apply transformations regardless of batch or streaming mode.
-
+import numpy as np
 import pandas as pd 
 import torch
 
-from pyspark.sql.functions import pandas_udf
+from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import StructType, StructField, ArrayType, IntegerType, FloatType, StringType, TimestampType
 
 from ArticleReader.Chunker import Chunker
@@ -33,6 +33,7 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
   # ensure sentences are sorted by seq_len
   batch_df = sentences.to_frame("sentences")
 
+  batch_df.reset_index(inplace=True)  
   batch_df.loc[:,"seq_len"] = batch_df.sentences.map(narrator.seq_len)
   batch_df.sort_values("seq_len", ascending=False, inplace=True)
   
@@ -43,12 +44,14 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
   arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
 
   # Add more pause where needed (very naive currenty)
-  mel_lengths = narrator.add_pauses(batch_df.sentences, mel_lengths, pause_dur=40)   
+  batch_df["mel_lengths"] = narrator.add_pauses(batch_df.sentences, mel_lengths, pause_dur=40)   
+
   # Cut silence padding while applying pauses from above 
-  arr = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * narrator.hop_len)]  
+  batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * narrator.hop_len)]  
   
-  output = pd.DataFrame({"waveform": arr, "mel_lengths": mel_lengths, "seq_len": batch_df.seq_len })
- 
+  batch_df.sort_values("index", inplace=True)
+
+  output = batch_df[["waveform", "mel_lengths", "seq_len"]]
   return output
 
 
@@ -128,3 +131,81 @@ processed_schema = StructType([
         StructField("tables", ArrayType(visuals_schema), True),
         StructField("figures", ArrayType(visuals_schema), True)   
     ])
+
+
+recomb_schema = StructType([
+        StructField("index", IntegerType(), True),
+        StructField("waveform", ArrayType(FloatType(), True))])
+
+
+
+
+# Define the output schema
+schema = StructType([
+    StructField("request_id", StringType()),
+    StructField("speech", ArrayType(FloatType())),
+    StructField("text", StringType()),
+])
+
+# Grouped applyInPandas function
+def concat_waveforms_udf(pdf: pd.DataFrame) -> pd.DataFrame:
+    pdf["index"] = pd.to_numeric(pdf["index"], errors="raise")
+    pdf_sorted = pdf.sort_values("index")
+    print(type(pdf_sorted["waveform"].iloc[0]))
+    concatenated = np.concatenate(pdf_sorted["waveform"].values).tolist()
+    conc_text = "".join(pdf_sorted["sentence"].values)
+    return pd.DataFrame({
+        "request_id": [pdf["request_id"].iloc[0]],
+        "speech": [concatenated],
+        "text": [conc_text]
+    })
+
+
+
+
+
+# Declare a grouped aggregate pandas UDF
+@pandas_udf(ArrayType(FloatType()))
+def concat_waveforms(df: pd.DataFrame) -> pd.Series:
+    # Sort by index
+    df_sorted = df.sort_values("index")
+    # Concatenate all waveform arrays
+    concatenated = np.concatenate(df_sorted["waveform"].values).tolist()
+    return pd.Series([concatenated])
+
+
+#        StructField("request_id", StringType(), False),,
+#        StructField("sentence", StringType(), True)]
+
+ #
+
+# @pandas_udf(ArrayType(FloatType()), PandasUDFType.GROUPED_AGG)
+# def concat_waveforms(index: pd.Series, wf: pd.Series) -> pd.Series:
+#     # Convert the series of structs (dicts) to a DataFrame.
+#     # Each element in iw_series should be a dict with keys 'index' and 'waveform'
+#     df =index.to_frame(name = 'index').join(wf.to_frame(name='waveform'))
+#     # pd.concat([index, wf], axis=1)
+#     # Ensure the 'index' column is numeric.
+#     df['index'] = pd.to_numeric(df['index'])
+#     # Sort the DataFrame by 'index' to ensure the correct order.
+#     df_sorted = df.sort_values("index")
+#     # Assuming each 'waveform' is a list or numpy array, we can use np.concatenate.
+#     # This avoids an explicit loop.
+#     concatenated = np.concatenate(df_sorted["waveform"].values).tolist()
+#     # Return a Pandas Series with a single element for the group.
+#     return pd.Series([concatenated])
+
+
+
+# # Define schema for the output DataFrame
+# schema = StructType([
+#     StructField("request_id", LongType(), False),
+#     StructField("text_len", LongType(), False),
+#     StructField("cum_text_volume", LongType(), False),
+# ])
+
+def concat_waveforms2(df: pd.DataFrame) -> pd.DataFrame:
+    df_sorted = df.sort_values(["index"], ascending=[True])
+    concatenated = np.concatenate(df_sorted["waveform"].values)
+    res = pd.DataFrame([concatenated], columns=["speech"])
+    return res

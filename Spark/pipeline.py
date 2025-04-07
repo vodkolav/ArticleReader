@@ -4,13 +4,13 @@
 
 from config import get_spark_session
 import config as conf
-from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf, write_row
+from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf, write_row, concat_waveforms_udf, schema
 
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 from pyspark.sql.functions import col, lit, desc, floor
-from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format
-from pyspark.sql.functions import posexplode, col, concat_ws, spark_partition_id
+from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format, struct
+from pyspark.sql.functions import posexplode, col, concat_ws, spark_partition_id, concat, expr
 from pyspark import StorageLevel
 
 def batch_empty(input_file = "data/arXiv-2106.04624v1/main.tex", output_path="output/"):
@@ -100,7 +100,7 @@ def tts_core(df_texts):
     
     #withColumn("partitionId", spark_partition_id())\
     step1\
-         .orderBy("cum_text_volume").show(110)
+         .orderBy("cum_text_volume").show(110, truncate=40)
 
     print(f"Number of partitions: {repartitioned.rdd.getNumPartitions()}")
     
@@ -110,21 +110,74 @@ def tts_core(df_texts):
         .drop("prediction")\
         .persist(StorageLevel.MEMORY_ONLY) 
     #.withColumn("processed",col("seq_len")).
-    processed.orderBy("cum_text_volume").show(110)
+    processed.orderBy("index").show(110)
 
 
     nreqs =  step1.select((lit(1) + F.max("request_id"))).first()
     # this is bad. need to find way to bypass this pipeline leak
+    print("nreqs:", nreqs[0])
     nr = nreqs[0] if nreqs[0] else 1
-    repartagain = processed.repartition(nr,col("request_id"))
+    repartagain = processed.repartition(nr,col("request_id"))\
+                            
 
-    df_wf = repartagain\
-                .groupby("request_id")\
-                .agg(F.sort_array(F.collect_list(
-                     F.struct("request_id","index", "waveform", "sentence"))).alias("wfs"))\
-                .select("request_id",
-                        flatten("wfs.waveform").alias("speech"),
-                        concat_ws("",col("wfs.sentence")).alias("text"))
+    
+
+    # df_wf = repartagain \
+    #     .groupBy("request_id") \
+    #     .agg(
+    #         concat_waveforms(col("index"), col("waveform")).alias("speech")
+    #     )
+    
+    df_struct = repartagain.withColumn("structed", struct("index", "waveform", "sentence"))
+
+
+    df_wf = df_struct.groupBy("request_id").applyInPandas(concat_waveforms_udf, schema=schema)
+
+
+    # df_wf = df_struct.groupBy("request_id").agg(
+    #     concat_waveforms("structed").alias("speech")
+    # )
+
+# Apply the function using applyInPandas
+#df = df.groupBy("request_id").applyInPandas(concat_waveforms2, recomb_schema)
+
+# "request_id",, "sentence"        .orderBy("index")\
+# ,            F.concat_ws("", F.collect_list("sentence")).alias("text")
+
+
+
+
+    # w = Window.partitionBy('request_id').orderBy('index').groupBy('request_id')
+
+    # df_wf = repartagain\
+    #     .withColumn('sorted_wf', F.collect_list('waveform').over(w))\
+    #     .withColumn("sorted_text", F.collect_list('sentence').over(w))\
+    #     \
+    #     .agg(F.max('sorted_wf').alias('speech'),
+    #          F.max('sorted_text').alias("text"))\
+    #     .withColumn("speech", flatten("speech"))\
+    #     .withColumn("text", concat_ws("",col("text")))
+        
+
+
+    # w = Window.partitionBy('request_id').orderBy('index')
+
+    # df_wf = repartagain\
+    #     .withColumn('sorted_list', F.collect_list('waveform').over(w))\
+    #     .withColumn("sorted_text", F.collect_list('sentence').over(w))\
+    #     .groupBy('request_id')\
+    #     .agg(F.max('sorted_list').alias('speech'),
+    #          F.max('sorted_text').alias("text"))\
+    #     .withColumn("speech", flatten("speech"))\
+    #     .withColumn("text", concat_ws("",col("text")))
+
+    # df_wf = repartagain\
+    #             .groupby("request_id")\
+    #             .agg(F.sort_array(F.collect_list(
+    #                  F.struct("request_id","index", "waveform", "sentence"))).alias("sorted_wfs"))\
+    #             .select("request_id",
+    #                     expr("flatten(transform(sorted_wfs, x -> x.waveform))").alias("speech"),
+    #                     concat_ws("",col("sorted_wfs.sentence")).alias("text"))
 
     df_wf.show()
     # TODO: maybe we can (should?) recombine this with df_processed? 
@@ -218,7 +271,7 @@ def multi_outputs(df_wf):
              .parquet(conf.output_path + "/parquet/")
         
     if "csv" in conf.output_types:
-        df_wf.drop("speech")\
+        df_wf.withColumn("speech", F.element_at("speech",1))\
              .write\
              .mode('append')\
              .partitionBy("request_id")\
