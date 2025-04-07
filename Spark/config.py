@@ -11,7 +11,8 @@ from utils import zip_project
 # params
 app_name="TTS CPU Inference"
 test_run = True # False # 
-test_size = 10
+test_size = 13
+test_offset = 200
 text_volume_max = 300  # will need to be tuned for specific cluster machines
 chunk_size = 90
 output_path="output/"

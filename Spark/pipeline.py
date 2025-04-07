@@ -8,7 +8,7 @@ from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_
 
 from pyspark.sql import functions as F
 from pyspark.sql import Window
-from pyspark.sql.functions import col, lit, desc, floor
+from pyspark.sql.functions import col, lit, desc, floor, count_distinct
 from pyspark.sql.functions import collect_list, flatten, current_timestamp, date_format, struct
 from pyspark.sql.functions import posexplode, col, concat_ws, spark_partition_id, concat, expr
 from pyspark import StorageLevel
@@ -81,7 +81,7 @@ def tts_core(df_texts):
 
     # for test runs I want to process just 5 chunks per request
     if conf.test_run:
-        chunks = chunks.orderBy("index", "request_id").offset(120).limit(conf.test_size)
+        chunks = chunks.orderBy("index", "request_id").offset(conf.test_offset).limit(conf.test_size)
 
     # Partition by cumulative text volume
     text_volume_window = (Window.orderBy(desc('text_len'))
@@ -113,7 +113,7 @@ def tts_core(df_texts):
     processed.orderBy("index").show(110)
 
 
-    nreqs =  step1.select((lit(1) + F.max("request_id"))).first()
+    nreqs =  step1.select(count_distinct("request_id")).first()
     # this is bad. need to find way to bypass this pipeline leak
     print("nreqs:", nreqs[0])
     nr = nreqs[0] if nreqs[0] else 1
@@ -128,7 +128,7 @@ def tts_core(df_texts):
     #         concat_waveforms(col("index"), col("waveform")).alias("speech")
     #     )
     
-    df_struct = repartagain.withColumn("structed", struct("index", "waveform", "sentence"))
+    df_struct = repartagain.withColumn("structed", struct("index", "waveform", "sentence", "duration"))
 
 
     df_wf = df_struct.groupBy("request_id").applyInPandas(concat_waveforms_udf, schema=schema)

@@ -13,14 +13,15 @@ from ArticleReader.LatexToSpeech import LatexParser
 from ArticleReader.Narrator import Narrator
 
 import soundfile as sf
-
+from datetime import timedelta
 import config as conf
 
 
 tts_schema = StructType([
     StructField("waveform", ArrayType(FloatType())),
     StructField("mel_lengths", IntegerType()),
-    StructField("seq_len", IntegerType())])
+    StructField("seq_len", IntegerType()),
+    StructField("duration", FloatType())])
 
 @pandas_udf(tts_schema)
 def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
@@ -46,12 +47,14 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
   # Add more pause where needed (very naive currenty)
   batch_df["mel_lengths"] = narrator.add_pauses(batch_df.sentences, mel_lengths, pause_dur=40)   
 
+  batch_df["duration"] = mel_lengths * narrator.hop_len / 22050.0
+
   # Cut silence padding while applying pauses from above 
   batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * narrator.hop_len)]  
   
   batch_df.sort_values("index", inplace=True)
 
-  output = batch_df[["waveform", "mel_lengths", "seq_len"]]
+  output = batch_df[["waveform", "mel_lengths", "seq_len", "duration"]]
   return output
 
 
@@ -76,9 +79,15 @@ def write_row(row):
     request_id = row["request_id"]
     speech = row["speech"]
     # For example, write a file named using the request_id and timestamp.
-    output_path = conf.output_path + f"/{request_id}.wav"
-    save_to_disk(speech, output_path)
+    output_path = conf.output_path + f"/{request_id}"
+    save_to_disk(speech, output_path + ".wav")
+    save_srt(row["text"],  output_path + ".srt")
+    save_video(output_path)
 
+
+def save_srt(content, filename):
+    with open(filename, "w+") as f:
+        f.write(content)
 
 def preprocess_text(file_content):
     parser = LatexParser()
@@ -153,7 +162,7 @@ def concat_waveforms_udf(pdf: pd.DataFrame) -> pd.DataFrame:
     pdf_sorted = pdf.sort_values("index")
     print(type(pdf_sorted["waveform"].iloc[0]))
     concatenated = np.concatenate(pdf_sorted["waveform"].values).tolist()
-    conc_text = "".join(pdf_sorted["sentence"].values)
+    conc_text = generate_srt(pdf_sorted["sentence"].array, pdf_sorted["duration"].array)
     return pd.DataFrame({
         "request_id": [pdf["request_id"].iloc[0]],
         "speech": [concatenated],
@@ -162,7 +171,61 @@ def concat_waveforms_udf(pdf: pd.DataFrame) -> pd.DataFrame:
 
 
 
+def generate_srt(sentences, durations):
+    """
+    Generates an SRT file from a list of sentences and durations.
 
+    Args:
+        sentences (list of str): The sentences to be shown as subtitles.
+        durations (list of int): Durations (in seconds) for each sentence in chronological order.
+        output_file (str): Path to save the SRT file.
+
+    Returns:
+        None
+    """
+
+    def format_timestamp(seconds):
+        """Formats seconds into SRT timestamp format."""
+        td = timedelta(seconds=seconds)
+        total_seconds = int(td.total_seconds())
+        milliseconds = int(td.microseconds / 1000)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
+
+    srt_content = ""
+
+    # md = min(durations)
+#    duration = [ a - md for a in duration]
+
+    current_time = 0  # Start time in seconds
+    for i, (sentence, duration) in enumerate(zip(sentences, durations), start=1):
+        duration = float(duration)
+        start_time = format_timestamp(current_time)
+        end_time = format_timestamp(current_time + duration)
+        current_time += duration  # Increment time by the duration of the sentence
+
+        # Write SRT entry
+        srt_content += f"{i}\n"
+        srt_content += f"{start_time} --> {end_time}\n"
+        srt_content += f"{sentence.strip()}\n\n"
+
+    return srt_content
+
+def save_video(output_file):
+    # ffmpeg -loop 1 -i image.png -i 24.12.08-17.wav -c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p -shortest output.mp4
+
+    import os
+
+    print("\n saving static video")
+    command = f"""
+ffmpeg -y -loop 1 -i output/image.png -i {output_file}.wav 
+-c:v libx264 -tune stillimage -c:a aac -b:a 
+192k -pix_fmt yuv420p -shortest {output_file}.mp4
+"""
+    command = command.replace("\n", "")
+    print(command)
+    os.system(command)
 
 # Declare a grouped aggregate pandas UDF
 @pandas_udf(ArrayType(FloatType()))
