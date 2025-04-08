@@ -4,7 +4,7 @@
 
 from config import get_spark_session
 import config as conf
-from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf, write_row, concat_waveforms_udf, schema
+from processing import preprocess_text_udf, split_text_into_chunks_udf, predict_batch_udf, write_row, concat_waveforms_udf, recomb_schema
 
 from pyspark.sql import functions as F
 from pyspark.sql import Window
@@ -117,67 +117,10 @@ def tts_core(df_texts):
     # this is bad. need to find way to bypass this pipeline leak
     print("nreqs:", nreqs[0])
     nr = nreqs[0] if nreqs[0] else 1
-    repartagain = processed.repartition(nr,col("request_id"))\
-                            
-
-    
-
-    # df_wf = repartagain \
-    #     .groupBy("request_id") \
-    #     .agg(
-    #         concat_waveforms(col("index"), col("waveform")).alias("speech")
-    #     )
-    
+    repartagain = processed.repartition(nr,col("request_id"))
     df_struct = repartagain.withColumn("structed", struct("index", "waveform", "sentence", "duration"))
 
-
-    df_wf = df_struct.groupBy("request_id").applyInPandas(concat_waveforms_udf, schema=schema)
-
-
-    # df_wf = df_struct.groupBy("request_id").agg(
-    #     concat_waveforms("structed").alias("speech")
-    # )
-
-# Apply the function using applyInPandas
-#df = df.groupBy("request_id").applyInPandas(concat_waveforms2, recomb_schema)
-
-# "request_id",, "sentence"        .orderBy("index")\
-# ,            F.concat_ws("", F.collect_list("sentence")).alias("text")
-
-
-
-
-    # w = Window.partitionBy('request_id').orderBy('index').groupBy('request_id')
-
-    # df_wf = repartagain\
-    #     .withColumn('sorted_wf', F.collect_list('waveform').over(w))\
-    #     .withColumn("sorted_text", F.collect_list('sentence').over(w))\
-    #     \
-    #     .agg(F.max('sorted_wf').alias('speech'),
-    #          F.max('sorted_text').alias("text"))\
-    #     .withColumn("speech", flatten("speech"))\
-    #     .withColumn("text", concat_ws("",col("text")))
-        
-
-
-    # w = Window.partitionBy('request_id').orderBy('index')
-
-    # df_wf = repartagain\
-    #     .withColumn('sorted_list', F.collect_list('waveform').over(w))\
-    #     .withColumn("sorted_text", F.collect_list('sentence').over(w))\
-    #     .groupBy('request_id')\
-    #     .agg(F.max('sorted_list').alias('speech'),
-    #          F.max('sorted_text').alias("text"))\
-    #     .withColumn("speech", flatten("speech"))\
-    #     .withColumn("text", concat_ws("",col("text")))
-
-    # df_wf = repartagain\
-    #             .groupby("request_id")\
-    #             .agg(F.sort_array(F.collect_list(
-    #                  F.struct("request_id","index", "waveform", "sentence"))).alias("sorted_wfs"))\
-    #             .select("request_id",
-    #                     expr("flatten(transform(sorted_wfs, x -> x.waveform))").alias("speech"),
-    #                     concat_ws("",col("sorted_wfs.sentence")).alias("text"))
+    df_wf = df_struct.groupBy("request_id").applyInPandas(concat_waveforms_udf, schema=recomb_schema)
 
     df_wf.show()
     # TODO: maybe we can (should?) recombine this with df_processed? 

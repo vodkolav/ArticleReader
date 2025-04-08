@@ -142,15 +142,8 @@ processed_schema = StructType([
     ])
 
 
-recomb_schema = StructType([
-        StructField("index", IntegerType(), True),
-        StructField("waveform", ArrayType(FloatType(), True))])
-
-
-
-
 # Define the output schema
-schema = StructType([
+recomb_schema = StructType([
     StructField("request_id", StringType()),
     StructField("speech", ArrayType(FloatType())),
     StructField("text", StringType()),
@@ -235,40 +228,3 @@ def concat_waveforms(df: pd.DataFrame) -> pd.Series:
     # Concatenate all waveform arrays
     concatenated = np.concatenate(df_sorted["waveform"].values).tolist()
     return pd.Series([concatenated])
-
-
-#        StructField("request_id", StringType(), False),,
-#        StructField("sentence", StringType(), True)]
-
- #
-
-# @pandas_udf(ArrayType(FloatType()), PandasUDFType.GROUPED_AGG)
-# def concat_waveforms(index: pd.Series, wf: pd.Series) -> pd.Series:
-#     # Convert the series of structs (dicts) to a DataFrame.
-#     # Each element in iw_series should be a dict with keys 'index' and 'waveform'
-#     df =index.to_frame(name = 'index').join(wf.to_frame(name='waveform'))
-#     # pd.concat([index, wf], axis=1)
-#     # Ensure the 'index' column is numeric.
-#     df['index'] = pd.to_numeric(df['index'])
-#     # Sort the DataFrame by 'index' to ensure the correct order.
-#     df_sorted = df.sort_values("index")
-#     # Assuming each 'waveform' is a list or numpy array, we can use np.concatenate.
-#     # This avoids an explicit loop.
-#     concatenated = np.concatenate(df_sorted["waveform"].values).tolist()
-#     # Return a Pandas Series with a single element for the group.
-#     return pd.Series([concatenated])
-
-
-
-# # Define schema for the output DataFrame
-# schema = StructType([
-#     StructField("request_id", LongType(), False),
-#     StructField("text_len", LongType(), False),
-#     StructField("cum_text_volume", LongType(), False),
-# ])
-
-def concat_waveforms2(df: pd.DataFrame) -> pd.DataFrame:
-    df_sorted = df.sort_values(["index"], ascending=[True])
-    concatenated = np.concatenate(df_sorted["waveform"].values)
-    res = pd.DataFrame([concatenated], columns=["speech"])
-    return res
