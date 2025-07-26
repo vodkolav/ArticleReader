@@ -1,0 +1,11 @@
+{
+    "PARALLEL":
+    {
+        "N_ENVS": 8,
+        "MAX_PROCS": 2,
+        "PLOT_SIZE": [
+            15,
+            5
+        ]
+    }
+}

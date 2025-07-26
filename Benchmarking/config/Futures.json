@@ -1,0 +1,92 @@
+{
+    "meta": {
+        "name": "",
+        "description": "Evaluation run on futures data",
+        "mode": "evaluation",
+        "num_episodes": 7296,
+        "total_timesteps": 50000,
+        "render_evaluation": false,
+        "save_ansi_frames": false,
+        "telemetry_episodes_limit": 256,
+        "verbosity": 1,
+        "skip": false        
+    },
+
+    "summary":{
+        "pid": 1520267,
+        "id": "futures_eval_20250618-215531-766833_1520267",      
+        "start_time": "20250618-215531-766833",
+        "end_time": "20250618-220813-382344",
+        "init_rss_mb": 4599.7421875
+    },
+
+    "data": {
+        "data_type": "futures",
+        "indicators": [
+            "ret",
+            "ret_1M",
+            "ret_2M",
+            "ret_3M",
+            "ret_1Y",
+            "macd",
+            "rsi_30"
+        ],
+        "data_dir": "data/futures",
+        "train_file": "data/futures/train_data.csv",
+        "backtest_file": "data/futures/trade_data.csv",
+        "raw_data_file": "data/futures/raw_data.csv",
+        "tic_to_use": null,
+        "train_start_date": "2009-01-01",
+        "train_end_date": "2020-07-01",
+        "trade_start_date": "2020-07-01",
+        "trade_end_date": "2021-10-29"
+    },
+
+    "env": {
+        "name": "futures",
+        "class":"FuturesTradingEnv",
+        "params": {
+            "cost_pct": 0.001,
+            "hmax": 100,
+            "initial_amount": 1000000,
+            "reward_scaling": 0.0001,
+            "turb_threshold": 70,
+            "risk_col": "vix"
+        }
+    },
+
+    "algorithm": {
+        "name": "a2c",
+        "class":"A2C",
+        "params": {
+
+            "n_steps": 1280,
+            "learning_rate": 0.0007,
+            "ent_coef": 0.01,
+            "gamma": 0.99           
+        }
+    },
+
+    "progress": [
+        {
+            "unit":"episode",
+            "i": 4,
+            "fps": 38,
+            "start": 1750273693.2349513,
+            "end": 1750273693.2393124,   
+            "length_steps": 238,
+
+            "terminated": false,
+            "truncated": true,
+            "reward": 1.180998984527588,
+            "reward_min": null,
+            "reward_mean": null,
+            "reward_max": null,
+            "learning_rate": 0.001,
+            "n_updates": 2878,
+            "actor_loss": 1665.9085693359375,
+            "critic_loss": 81.5664291381836,
+            "return": 104523400.0
+        }
+    ]
+}
