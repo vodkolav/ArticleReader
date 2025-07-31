@@ -134,6 +134,7 @@ trash
 checkpoints
 iframe_figures
 dbg
+test
 .obsidian
 **/*.ndz.*
 .virtual_documents
