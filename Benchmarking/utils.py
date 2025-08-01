@@ -78,8 +78,62 @@ def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]])
     return coarse_data, fine_data
 
 
-def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path: List[str] = None) -> Dict[str, Any]:
+def splt(value):
+    sp = value.split('[')
+    field = sp[0]
+    if len(sp) > 1:           
+        key = sp[1][:-1]
+    else: 
+        key = None
+    return field, key
+
+
+def arr_merge(coarse, fine, key, deep_map):
+    if len(coarse) == len(fine):
+        # naive merge
+
+        # res = []
+        # for c,f in zip(coarse, fine):
+        #     res.append(deep_merge(c, f, deep_map))
+        try:
+            res = [deep_merge(c, f, deep_map)  for c,f in zip(coarse, fine) ]
+        except ValueError as e:
+            raise NotImplementedError(f"Error merging arrays with key '{key}': {e}")
+            #print("more involved merge needed, with syncing by id")
+
+    else :
+        raise ValueError("Coarse and fine arrays must have the same length for naive merge.")         
+    return res
+
+
+def deep_merge(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], deep_map: Dict[str, str]) -> Dict[str, Any]:
     
+    for path, chld in deep_map.items():
+        field, key = splt(path)
+
+        if coarse_data.get(key) != fine_data.get(key) :
+            raise ValueError(f"Key mismatch: {coarse_data.get(key)} != {coarse_data.get(key)}")
+        
+        if key != None :
+            if field in coarse_data:
+                coarse_data[field] = arr_merge(coarse_data[field], fine_data[field], key, chld)
+            else:
+                if fine_data[field] != []:
+                    coarse_data[field] = fine_data[field]
+        else:
+            coarse_data[field] = fine_data[field]
+    return coarse_data
+
+
+def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path_specs: List[str] = None) -> Dict[str, Any]:
     
-    return "not implemented yet"
+    deep = {}
+    for p in path_specs:
+        k = p.split('.')[1:]
+        #print(p)
+        deep = deep_dict(deep, k)
+
+    combined = deep_merge(coarse_data, fine_data, deep)
+
+    return combined
 

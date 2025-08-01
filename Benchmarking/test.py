@@ -105,20 +105,20 @@ dump(coarse_data, 'coarse')
 # code --diff test/original.json test/coarse.json 
 
 
-# # --- Recombination 
-# try:
-#     recombined_output = recombine(coarse_data, fine_data)
-#     print(json.dumps(recombined_output, indent=2))
+# --- Recombination 
+try:
+    recombined_output = recombine(coarse_data, fine_data, paths)
+    dump(recombined_output, 'recombined')
 
-#     # Verify if recombined is identical to original
-#     print("\n--- Verification ---")
-#     if recombined_output == original_json_data:
-#         print("Recombination successful: Output matches original data!")
-#     else:
-#         print("Recombination failed: Output does NOT match original data!")
+    # Verify if recombined is identical to original
+    print("\n--- Verification ---")
+    if recombined_output == original_json_data:
+        print("Recombination successful: Output matches original data!")
+    else:
+        print("Recombination failed: Output does NOT match original data!")
 
-# except ValueError as e:
-#     print(f"\nError during recombination: {e}")
+except ValueError as e:
+    print(f"\nError during recombination: {e}")
 
 
 # # --- Example of an ambiguous case (simulated) ---
