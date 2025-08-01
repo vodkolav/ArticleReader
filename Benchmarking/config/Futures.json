@@ -14,7 +14,7 @@
 
     "summary":{
         "pid": 1520267,
-        "id": "futures_eval_20250618-215531-766833_1520267",      
+        "experiment_id": "futures_eval_20250618-215531-766833_1520267",      
         "start_time": "20250618-215531-766833",
         "end_time": "20250618-220813-382344",
         "init_rss_mb": 4599.7421875
@@ -55,11 +55,10 @@
         }
     },
 
-    "algorithm": {
+    "model": {
         "name": "a2c",
         "class":"A2C",
         "params": {
-
             "n_steps": 1280,
             "learning_rate": 0.0007,
             "ent_coef": 0.01,
@@ -74,6 +73,7 @@
             "fps": 38,
             "start": 1750273693.2349513,
             "end": 1750273693.2393124,   
+            
             "length_steps": 238,
 
             "terminated": false,

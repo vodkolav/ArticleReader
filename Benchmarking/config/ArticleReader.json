@@ -1,76 +1,54 @@
 {
-    "Data":{
-        "test_data": "data/arXiv-2106.04624v1/main.tex"
-    },
-
-
-    "Given":
-    {
-        "model_id": "tts-tacotron2-ljspeech",
+    "meta":
+    {      
         "stage": "tts",
         "memory_limit_bytes": 26281478400.0,
-        "time": "25.02.23-03.02.47",
-        "experiment_id": "25.02.23-03.02.47",
         "device": "CPU",
         "chunk_length": 320,
         "batch_size": 125
     },
 
-    "Summary":
-    {
+    "summary":
+    {        
+        "time": "25.02.23-03.02.47",
         "max_memory_use": 3931697152.0,
         "run_time_sec": 196.09138,
         "avg_percent_silence": 0.2063680000000001,
         "exceptions": null,        
         "n_threads": null,
-        "chunk_durations": [
-            0.05868480725623583,
-            0.07537414965986394,
-            0.05891156462585034,
-            0.07219954648526077,
-            0.06816326530612245,
-            0.08820861678004535,
-            0.06058956916099773,
-            0.07791383219954648,
-            0.07922902494331066,
-            0.09070294784580499,
-            0.06344671201814059            
-        ]
+        "experiment_id": "25.02.23-03.02.47"
+    },    
+    
+    "data":{
+        "test_data": "data/arXiv-2106.04624v1/main.tex"
+    },
+    "model": {
+        "name": "tts-tacotron2-ljspeech",
+        "class":"Tacotron2",
+        "provider": "speechbrain",
+        "params": {            
+            "alpha": 0.1,
+            "lambda": 0.3,
+            "gamma": 0.9
+        },
+        "overrides":{"max_decoder_steps": 2000}
     },
 
-    "memory_log": [
+    "progress": [
         {
-            "time": 1740272567.7937953
-        },
-        {
-            "time": 1740272567.8687654,
-            "memory": 1945231360,
-            "RSS": 1945231360,
-            "VMS": 15286988800,
-            "processes": 1,
-            "num_threads": 76,
-            "per_process_limit": 26281478400.0,
-            "free_memory": 21822556000
-        },
-        {
-            "time": 1740272567.985639,
-            "memory": 2018725888,
-            "RSS": 2018725888,
-            "VMS": 15367888896,
-            "processes": 1,
-            "num_threads": 76,
-            "per_process_limit": 26281478400.0,
-            "free_memory": 21752980000
-        },
-        {
-            "time": 1740272763.8851762,
-            "memory": 2494545920,
-            "RSS": 2494545920,
-            "VMS": 15762997248,
-            "processes": 1,
-            "num_threads": 76,
-            "per_process_limit": 26281478400.0,
-            "free_memory": 21276408000
-        }
+            "unit": "sample",
+            "i":3826,
+            "samplerate": "1/second",
+            "start": 1740272567.8687654,
+            "resources": {
+                "rss_mb": 4602.8671875,
+                "size_bytes": 113936,          
+                "vms_mb": 15286988800,      
+                "processes": 1,
+                "num_threads": 76,
+                "per_process_limit": 26281478400.0,
+                "free_memory": 21822556000
+            }
+        }        
     ]
 }

@@ -8,16 +8,18 @@
         "save_ansi_frames": false,
         "telemetry_episodes_limit": 256,
         "verbosity": 1,
-        "skip": false        
+        "skip": false,     
+        "device": "CPU"   
     },
 
     "summary":{
         "pid": 1520267,
-        "id": "SARSA_20250618-215531-766833_1520267",      
+        "experiment_id": "SARSA_20250618-215531-766833_1520267",      
         "start_time": "20250618-215531-766833",
         "end_time": "20250618-220813-382344",
         "init_rss_mb": 4599.7421875
     },
+
     "data": "No Data",
 
 
@@ -29,11 +31,10 @@
         }
     },
 
-    "algorithm": {
-        "name": "SARSA",
+    "model": {
+        "name": "Sarsa",
         "class":"SARSA",
-        "params": {
-            
+        "params": {            
             "alpha": 0.1,
             "lambda": 0.3,
             "gamma": 0.9
@@ -57,17 +58,23 @@
             "fps": 38,
             "start": 1750273693.2349513,
             "end": 1750273693.2393124,
-            "length_steps": 238,            
-            "is_training": false,
 
+            "length_steps": 238,
             "terminated": false,
             "truncated": true,
-
-            "rss_mb": 4602.8671875,
-            "size_bytes": 113936,
-
             "epsilon": 0.01013569078947374,
             "reward": -893,
+
+            "resources": {
+                "rss_mb": 4602.8671875,
+                "size_bytes": 113936,          
+                "vms_mb": 15286988800,      
+                "processes": 1,
+                "num_threads": 76,
+                "per_process_limit": 26281478400.0,
+                "free_memory": 21822556000
+            },
+
             "replay": [],
             "info": [],
             "internal_state": {
