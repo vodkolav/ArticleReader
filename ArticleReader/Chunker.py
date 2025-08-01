@@ -128,6 +128,16 @@ class Chunker:
         # self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
         # self.chunks["text_len"] = self.chunks.sentence.str.len()
 
+    # in BEnchmark: 
+    # fr = self.chunker.find_chunk("Figure four shows the evolution")
+    def find_chunk(self, text):
+        # find number of chunk which contains specific text
+        # may be useful if you want to test on specific portion of file
+        for i, ch in enumerate(self.chunks):
+            if text in ch:
+                return i
+        return -1
+
     def as_pandas(self):
         chunks = pd.DataFrame(self.chunks, columns=["sentence"]).reset_index()
         chunks["text_len"] = chunks.sentence.str.len()
