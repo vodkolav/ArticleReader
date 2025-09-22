@@ -9,7 +9,8 @@
         "telemetry_episodes_limit": 256,
         "verbosity": 1,
         "skip": false,     
-        "device": "CPU"   
+        "device": "CPU",   
+        "episodeUnit":"episode"
     },
 
     "summary":{
@@ -23,11 +24,10 @@
     "data": "No Data",
 
 
-    "env": {
+    "env": {        
         "name": "Taxi-v3",
         "class":"TaxiV3",
-        "params": {
-
+        "params": {"id": "Taxi-v3"
         }
     },
 
@@ -52,8 +52,7 @@
     },
 
     "progress": [
-        {
-            "unit":"episode",
+        {            
             "i": 8159,
             "fps": 38,
             "start": 1750273693.2349513,

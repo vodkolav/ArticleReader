@@ -137,3 +137,47 @@ def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path_specs
 
     return combined
 
+
+def test_permutations(self):
+
+    grid = {"A": [1,2,3,4,5,6],
+            "B": "a b c d e f g h i j".split(' '),
+            "C": ["U", "V"],
+            "D": ["J","K"],
+            "E": ["P"], 
+            }
+    res = self.permutations(grid)
+    
+    import json
+    with open("check.json", 'w+') as f: 
+        json.dump(res, f, indent=4)
+
+
+    import pandas as pd 
+    df = pd.read_json("check.json")
+    print(df)
+
+    print(len(df.drop_duplicates())) 
+
+def permutations(self, grid):
+
+    keys = list(grid.keys())
+    n = len(keys)
+
+    layers = [[{keys[l]:v} for v in grid[keys[l]]]  for l in range(n)]
+
+    def combine(prev, this):
+        print(prev)
+        print(this)
+        tmp = [ t.copy() for t in this]
+        [th.update(prev) for th in tmp]
+        return tmp
+
+    res = layers[0]
+    for i in range(1,n):
+        l1 = res
+        l2 = layers[i]
+        res = [combine(l, l2) for l in l1]
+        res = sum(res,[])
+    return res
+

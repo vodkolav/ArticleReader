@@ -1,143 +1,9 @@
-import time
 from datetime import datetime
-import threading
-import psutil
 import os
-from ArticleReader.Narrator import Narrator
-import torch
-from ArticleReader.Chunker import Chunker
-import pandas as pd
-from speechbrain.inference import Tacotron2, HIFIGAN
+
 import json
-import resource
 from pathlib import Path
-
-class MemoryMonitor:
-    """
-    Instance-based memory monitor to track CPU memory usage during inference.
-    Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
-    """
-    
-    def __init__(self, stage, model_id):
-        self.memory_log = []
-        self.exception = None
-        self.stop_event = threading.Event()
-        self.stage = stage
-        self.model_id = model_id
-        self.process = psutil.Process(os.getpid())
-        self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
-        self.last_process_count = 0
-        self.interval = 0.1
-
-    def get_free_memory_bytes(self):
-        with open('/proc/meminfo', 'r') as mem:
-            free_memory = 0
-            for i in mem:
-                sline = i.split()
-                if str(sline[0]) in ('MemFree:', 'Buffers:', 'Cached:'):
-                    free_memory += int(sline[1])
-        return free_memory * 1000
-
-    def get_process_group(self):
-        pgid = os.getpgid(os.getpid())
-        group = []
-        for p in psutil.process_iter():
-            try:
-                if os.getpgid(p.pid) == pgid:
-                    group.append(p)
-            except Exception:
-                print("do we really want to pass? 1")
-                pass
-        return group
-
-    def siblings_snapshot(self):
-        # heavy artillery, not tested much. use sparingly.
-        # snapshots the stats of all the sibling processes of this process
-        siblings = self.process.parent().children(recursive=True)
-        snpsh = []
-        for s in siblings:
-            snp = s.memory_info()._asdict()
-            snp["_pid"] = s._pid
-            snp["_name"] = s._name
-            snpsh.append(snp)
-        return snpsh
-
-    def set_memory_limit(self, all_processes):
-        """Estimate process count and apply memory limits only if needed."""
-        
-        num_processes = max(1, len(all_processes))
-        per_process_limit = (self.memory_limit_bytes // num_processes) 
-
-        try:
-            # Check process count every 5 seconds and adjust if needed
-            if len(self.memory_log) % int(5 / self.interval) == 0:
-
-                # Update limits only if the number of processes has changed significantly
-                if abs(num_processes - self.last_process_count) / max(1, self.last_process_count) > 0.2:
-                    self.last_process_count = num_processes
-                    for p in all_processes:
-                        try:
-                            p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                            #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                        except Exception:
-                            print("do we really want to Ignore permission errors?")
-                            pass  # Ignore permission errors
-        except Exception:
-            print("do we really want to Ignore rare process termination errors?")
-            pass  # Ignore rare process termination errors
-        return num_processes, per_process_limit
-
-    def monitor_cpu_memory(self):
-        while not self.stop_event.is_set():
-            all_processes = self.get_process_group()            
-            #all_processes = self.process.children(recursive=True) + [self.process]
-
-            num_processes, per_process_limit = self.set_memory_limit(all_processes)
-            
-            RSS = sum(p.memory_info().rss for p in all_processes)
-            VMS = sum(p.memory_info().vms for p in all_processes)
-            # here we can add other parameters if need be
-            self.memory_log.append({"time": time.time(), 
-                                    "memory": RSS,
-                                    "RSS": RSS,
-                                    "VMS": VMS,
-                                    "processes": num_processes,
-                                    "num_threads": self.process.num_threads(),
-                                    "per_process_limit":per_process_limit,
-                                    "free_memory":self.get_free_memory_bytes(),
-                                    #"siblings": self.siblings_snapshot() #only use when REALLY needed
-                                    })     
-            
-            
-            time.sleep(self.interval)
-
-    def attach_to(self, forward_func):
-        def wrapper(model, *args, **kwargs):
-            self.memory_log.clear()  # Clear previous logs
-            # add first empty record to split the 
-            # different cases on the graphs   
-            self.memory_log.append({"time": time.time()}) #           
-            # Set initial memory limit
-            #self.set_memory_limit()
-            
-            # Start the CPU memory monitoring thread.
-            monitor_thread = threading.Thread(target=self.monitor_cpu_memory)
-            monitor_thread.start()
-            
-            try:
-                output = forward_func(model, *args, **kwargs)  # Run the original forward pass
-            except Exception as e:
-                print("forward_func failed with exc: ", str(e))
-                self.exception = str(e)
-                output = None
-            # Stop monitoring
-            finally:
-                # Ensure monitoring stops even if an exception occurs
-                self.stop_event.set()
-                monitor_thread.join()
-            
-            return output
-        return wrapper
+import pandas as pd
 
 
 class Bench:
@@ -151,104 +17,6 @@ class Bench:
         experiments = [pd.read_json(p, orient="records") for p in paths]
         bnch_data = pd.concat(experiments)
         return bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
-
-    def summarize_profile(self, model_profiler: MemoryMonitor):
-        # TODO: move method to MemoryMonitor
-
-        if len(model_profiler.memory_log)>1:
-            data = pd.DataFrame(model_profiler.memory_log)
-            data['time'] = pd.to_datetime(data['time'], unit='s')
-            dur = (data.time.max() - data.time.min()).total_seconds() 
-            memuse = data['memory'].max()
-            #dur = str(dur.microseconds/1e6)
-        else:
-            dur=0
-            memuse=None
-            
-        res = {
-            "model_id": model_profiler.model_id ,  #(name)
-            "stage": model_profiler.stage,
-            "max_memory_use": memuse,
-            "run_time_sec": dur,
-            "memory_log": model_profiler.memory_log,
-            "exceptions": model_profiler.exception,
-            "memory_limit_bytes": model_profiler.memory_limit_bytes,         
-            "n_threads": None
-        }
-        return res
-
-    def run_experiment(self, processed, case):
-        """
-        case = {"device": "CPU", 
-                "tts_model": "tts-tacotron2-ljspeech",
-                "vocoder_model": "tts-hifigan-ljspeech",
-                "batch_size": 2, 
-                "chunk_length": 50 
-       }
-        """
-        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "benchmark/" + tstp
-
-        self.chunker = Chunker(max_len=case["chunk_length"])
-        self.chunker.split_text_into_chunks(processed)
-        
-        fr = 0 # beginning from chunk
-        chunks = self.chunker.get_test_batch(case["batch_size"], fr)        
-        self.chunker.save_chunks_as_text(case_file + ".md", chunks)
-        
-        provider = "speechbrain"
-
-        dev = "cuda" if case["device"]=="GPU" else "cpu"
-
-        model_name = case["tts_model"]
-        tts_model = Tacotron2.from_hparams(
-                source=f"{provider}/{model_name}",
-                savedir=f"checkpoints/{model_name}",
-                overrides={"max_decoder_steps": 2000},
-                run_opts={"device":dev} 
-        )
-        tts_model.id = model_name
-
-        model_name = case["vocoder_model"]
-        vocoder_model = HIFIGAN.from_hparams(
-                source=f"{provider}/{model_name}",
-                savedir=f"checkpoints/{model_name}",
-                run_opts={"device":dev} 
-            )
-        vocoder_model.id = model_name
-
-        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
-
-        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
-        
-
-        self.narrator = Narrator(tts_model, vocoder_model) 
-        waveforms, durations = self.narrator.text_to_speech_batched(chunks)
-        waveform = torch.cat(waveforms, dim=1)
-        self.narrator.save_audio(case_file + ".wav", waveform)
-        
-        sampling_freq = 22050.0
-        durations_sec = (durations / sampling_freq).tolist()
-        perc_sile = 1- sum(durations)/(max(durations)*len(durations))
-
-        
-        result = {
-            "time": tstp,
-            "experiment_id": tstp,
-            "chunk_durations": durations_sec,
-            "avg_percent_silence": perc_sile
-        }
-        result.update(case)
-        
-        tts_stage = self.summarize_profile(self.tts_profiler)
-        tts_stage.update(result)
-        
-        voc_stage = self.summarize_profile(self.vocoder_profiler)
-        voc_stage.update(result)
-
-        return [tts_stage, voc_stage]
 
 
 
@@ -293,164 +61,177 @@ class Bench:
                                 print("data for case already exists:\n", self.case)
         print("experiment complete.")
 
-    def init_batch(self, batch_size):
-        # take batches of sorted chunks
-        fr = 0 # beginning from chunk              
-        batch = self.chunker.get_batch_sorted(batch_size, fr)    
 
-        #batch = self.chunker.get_test_batch(batch_size, fr)        
-        self.case_objects["batch_size"] = batch
-        self.case["batch_size"] = batch_size
-
-    def init_chunker(self, processed_text, chunk_length):
-        self.chunker = Chunker(max_len=chunk_length)
-        self.chunker.split_text_into_chunks(processed_text)                        
-        self.case_objects["chunk_length"] = self.chunker
-        self.case["chunk_length"] = chunk_length
-
-    def init_voc_model(self, voc_model_name):
-        vocoder_model = HIFIGAN.from_hparams(
-                        source=f"{self.provider}/{voc_model_name}",
-                        savedir=f"checkpoints/{voc_model_name}",
-                        run_opts={"device":self.case_objects["device"]} 
-                        )
-        vocoder_model.id = voc_model_name
-
-        # self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        # vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
-                    
-        self.case_objects["vocoder_model"] = vocoder_model
-        self.case["vocoder_model"] = voc_model_name
-
-    def init_device(self, d):
-        dev = "cuda" if d =="GPU" else "cpu"            
-        self.case_objects["device"] = dev
-        self.case["device"] = d
-        return dev
-
-    def init_tts_model(self, tts_model_name):
-
-        tts_model = Tacotron2.from_hparams(
-                    source=f"{self.provider}/{tts_model_name}",
-                    savedir=f"checkpoints/{tts_model_name}",
-                    overrides={"max_decoder_steps": 2000},
-                    run_opts={"device":self.case_objects["device"]} 
-                    )
-        tts_model.id = tts_model_name
-        # self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        # tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
-
-        self.case_objects["tts_model"] = tts_model
-        self.case["tts_model"] = tts_model_name
-
-    def run_case(self):
-
-        sampling_freq = 22050.0
-        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "output/" + tstp
-
-        print(f"{tstp}: running experiment:\n {json.dumps(self.case, indent=2)}")
-
-        device = self.case_objects["device"]
-        tts_model = self.case_objects["tts_model"]
-        vocoder_model = self.case_objects["vocoder_model"]
-        chunk_length = self.case_objects["chunk_length"]
-        batch= self.case_objects["batch_size"]
-
-        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
-
-        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
-
-        # TTS
-        self.narrator = Narrator(tts_model, vocoder_model)        
-        print(" Running text_to_speech_df") 
-        batch_converted = self.narrator.text_to_speech_df(batch)
-        print(" Done Running text_to_speech_df") 
-
-        # restore order of sentences
-        print("restore order of sentences")
-        batch_converted.sort_values("index", ascending=True, inplace=True)
-
-        # recombine and save sound
-        print("recombine batch")
-        waveform = torch.cat(tuple(batch_converted.waveform), dim=1)
-
-        print("saving sound")
-        self.narrator.save_audio(case_file + ".wav", waveform)
-        print("done saving sound")
-
-        self.chunker.save_chunks_as_text(case_file + ".md", batch)
-
-        # create a report
-        print("creating report")
-        durations = batch_converted.durations_sec
-        #durations_sec = (durations / sampling_freq).tolist()
-        perc_sile = 1- sum(durations)/(max(durations)*len(durations))
+    def make_case(C: Constants, algo_name ,alpha, gamma, lambda_, epsilon = ("linear", 1) , theta = 1e-5, ):
         
-        print("writing results")
-        result = {
-            "time": tstp,
-            "experiment_id": tstp,
-            "chunk_durations": list(durations),
-            "avg_percent_silence": perc_sile
+        decay, eps = epsilon
+
+        # descr = {"case": i, "algo_name": algo_name , "alpha": alpha, "gamma": gamma, 
+        #          "lambda_":lambda_, "epsilon": epsilon, "theta": theta}
+
+        Case =  {
+            "metadata": {
+                "name": f"",
+                "description": f"Experiment with {algo_name} algorithm, gamma={gamma}, lambda={lambda_}",
+                "num_training_episodes": C.NUM_TRAINING_EPISODES,
+                "num_eval_episodes": C.NUM_EVAL_EPISODES,
+                "render_evaluation": C.RENDER_EVALUATION,
+                "save_ansi_frames": False,
+                "telemetry_episodes_limit": 256,
+                "skip": C.SKIP
+            },
+            "env": {
+                "name": C.ENV_ID,
+            } ,
+            "algorithm": {
+                "name": algo_name ,
+                "params": {
+                    "alpha": alpha,  
+                    "gamma": gamma,
+                    "lambda_": lambda_,
+                    "theta": theta,  # Only for Dynamic Programming
+                }
+            },
+            "strategy": {
+                "name": "EpsilonGreedy",
+                "params":{
+                    "decay": decay,
+                    "initial_epsilon": eps,
+                    "min_epsilon": 0.01,
+                    "epsilon_decay_episodes": C.NUM_TRAINING_EPISODES
+                }
+            }
         }
-        result.update(self.case)
+        return Case
+
+    def summary(Cases):
+        jn = pd.json_normalize(Cases)
+        jnu = jn.nunique()
+        cols = jnu.index[jnu > 1].tolist()
+        return jn[cols]
+
+
+
+
+    def read_configs(config_filepath):
+        try:
+            with open(config_filepath, 'r') as f:
+                experiment_configs = json.load(f)
+        except FileNotFoundError:
+            print(f"Error: Configuration file not found at {config_filepath}")
+            return
+        except json.JSONDecodeError:
+            print(f"Error: Invalid JSON in {config_filepath}")
+            return
+
+        print(f"Loaded {len(experiment_configs)} experiments from {config_filepath}")
+        return experiment_configs
+
+
+
+    def run_battery_of_experiments(experiment_configs: list, num_cores: int = None, results_dir="results"):
+        """
+        Reads experiment configurations from a JSON file and runs them in parallel.
+
+        Args:
+            config_filepath: Path to the JSON file containing experiment configurations.
+            num_cores: Number of CPU cores to use. Defaults to all available cores.
+        """
+
+        if num_cores is None:
+            num_cores = os.cpu_count()
+            if num_cores is None:
+                print("Warning: Could not detect CPU count, defaulting to 1 core.")
+                num_cores = 1
+            else:
+                print(f"Detected {num_cores} CPU cores. Using {num_cores} workers.")
+
+        # Separate every run of battery of tests to its own dir
+        results_dir = results_dir + "/" + datetime.now().strftime("%Y%m%d-%H%M")
         
-        print("combining tts_profiler results")
-        tts_stage = self.summarize_profile(self.tts_profiler)
-        tts_stage.update(result)
+        # Ensure results directory exists
+        os.makedirs(results_dir, exist_ok=True)
         
-        print("combining vocoder_profiler results")
-        voc_stage = self.summarize_profile(self.vocoder_profiler)
-        voc_stage.update(result)
+        # Create a multiprocessing Pool
+        # The 'with' statement ensures the pool is properly closed
+        all_results = []
+        with multiprocessing.Pool(processes=num_cores) as pool:
+            # pool.apply_async submits a single task and returns an AsyncResult object immediately.
+            # This allows you to submit all tasks without waiting for each one to finish.
+            async_results = []
+            for i, config in enumerate(experiment_configs):
+                print(f"Submitting experiment {i+1}/{len(experiment_configs)}: {config.get('name', 'unnamed')}")
+                result = pool.apply_async(run_case, (config,results_dir))
+                async_results.append(result)
 
-        return [tts_stage, voc_stage]
+            # Wait for all tasks to complete and collect results
+            print("\nWaiting for experiments to complete...")
+            for i, res in enumerate(async_results):
+                try:
+                    # .get() will block until the result is ready
+                    # You can add a timeout if you want to handle unresponsive processes
+                    experiment_result = res.get()
+                    all_results.append(experiment_result)
+                    print(f"Experiment {i+1}/{len(experiment_configs)}")
+                except Exception as e:
+                    print(f"Error running experiment {i+1}: {e}")
+                    all_results.append({"error": str(e), "config": experiment_configs[i]})
+
+        print("\nAll experiments finished.")
+        print("\n--- Summary of Results ---")
+        for res in all_results:
+            if "error" in res:
+                print(f"  FAILED: {res['config'].get('name', 'Unnamed')} - Error: {res['error']}")
+            else:
+                print(res["status"], res["timestamp"])
+
+        return all_results, results_dir
 
 
-    def test_permutations(self):
+    def load_experiment(data):
+        meta = data["metadata"]
 
-        grid = {"A": [1,2,3,4,5,6],
-             "B": "a b c d e f g h i j".split(' '),
-             "C": ["U", "V"],
-             "D": ["J","K"],
-             "E": ["P"], 
-               }
-        res = self.permutations(grid)
+        # Flatten the algorithm parameters into the metadata
+        # I'll deal with strategy parameters later
+        algo = data["algorithm"]
+        algo.update(algo["params"])
+        algo.pop("params", None)
+        meta.update(algo)
+
+        strat = data["strategy"]
+        meta.update({"decay": strat["params"]["decay"],
+                    "initial_epsilon": strat["params"]["initial_epsilon"],})
+
+        episodes = pd.DataFrame(data["episodes"])
+        episodes["exp_id"] = meta["id"]
+
+        return meta, episodes
+
+
+    def load_results(results_dir, patt = "*"):
+        pth = Path(results_dir)
         
-        import json
-        with open("check.json", 'w+') as f: 
-            json.dump(res, f, indent=4)
+        paths = list(pth.glob(patt +".json"))
+        
+        print(f"loading {len(paths)} files from:", pth.absolute())
+        print(str(paths[0]), "...", sep = "\n")
 
+        experiments = ['']*len(paths)
+        episodes = []
+        for i,p in enumerate(paths):
+            # try:
+                with open(p) as f:
+                    data = json.load(f)
+                    experiment, exp_episodes = load_experiment(data)
+                    experiments[i] = experiment
+                    episodes.append(exp_episodes)
+            # except Exception as ex: 
+            #     print("oops:", p)
+        experiments = pd.DataFrame(experiments)
+        episodes = pd.concat(episodes)
+        print("done.")
+        return experiments, episodes
 
-        import pandas as pd 
-        df = pd.read_json("check.json")
-        print(df)
-
-        print(len(df.drop_duplicates())) 
-
-    def permutations(self, grid):
-
-        keys = list(grid.keys())
-        n = len(keys)
-
-        layers = [[{keys[l]:v} for v in grid[keys[l]]]  for l in range(n)]
-
-        def combine(prev, this):
-            print(prev)
-            print(this)
-            tmp = [ t.copy() for t in this]
-            [th.update(prev) for th in tmp]
-            return tmp
-
-        res = layers[0]
-        for i in range(1,n):
-            l1 = res
-            l2 = layers[i]
-            res = [combine(l, l2) for l in l1]
-            res = sum(res,[])
-        return res
 
 
 

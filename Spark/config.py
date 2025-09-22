@@ -10,11 +10,11 @@ from utils import zip_project
 
 # params
 app_name="TTS CPU Inference"
-test_run = True # False # 
+test_run = False # True # 
 test_size = 100
 test_offset = 200
-text_volume_max = 300  # will need to be tuned for specific cluster machines
-chunk_size = 90
+text_volume_max = 700  # will need to be tuned for specific cluster machines
+chunk_size = 200
 output_path="output/"
 output_types = ["fs","parquet"]
 articles_topic="articles"
