@@ -325,3 +325,104 @@ class RLPileline(Pipeline):
         result = {"status": "done", "experiment_id": str(ex_id), "timestamp":run_timestamp, "telemetry_filepath": telemetry_filepath}
 
         return result
+    
+
+    def load_experiment(data):
+        meta = data["metadata"]
+
+        # Flatten the algorithm parameters into the metadata
+        # I'll deal with strategy parameters later
+        algo = data["algorithm"]
+        algo.update(algo["params"])
+        algo.pop("params", None)
+        meta.update(algo)
+
+        strat = data["strategy"]
+        meta.update({"decay": strat["params"]["decay"],
+                    "initial_epsilon": strat["params"]["initial_epsilon"],})
+
+        episodes = pd.DataFrame(data["episodes"])
+        episodes["exp_id"] = meta["id"]
+
+        return meta, episodes
+
+
+
+    def span_grid(self, grid, force = False):
+         #, processed_text, grid
+        """
+        grid = {"chunk_length": range(50, 500, 50),
+                "batch_size": (1, 2, 3, 5, 10, 20, 30, 50, 70, 100, 200),
+                "tts_model": ["tts-tacotron2-ljspeech"],
+                "vocoder_model": ["tts-hifigan-ljspeech"],
+                "device": ["CPU"], 
+            }
+        grid
+        """        
+        self.provider = "speechbrain"
+        
+        self.case_objects = {}
+        self.case = {}
+
+        for d in grid["device"]:
+            self.init_device(d)
+
+            for tts_model_name in grid["tts_model"]:                
+                self.init_tts_model(tts_model_name)
+
+                for voc_model_name in grid["vocoder_model"]:     
+                    self.init_voc_model(voc_model_name)
+
+                    for chunk_length in grid["chunk_length"]:
+                        self.init_chunker(processed_text, chunk_length)
+
+                        for batch_size in grid["batch_size"]:
+                            self.init_batch(batch_size)
+
+                            print("-"*30)
+
+        print("experiment complete.")
+
+
+
+    def make_case(C: Constants, algo_name ,alpha, gamma, lambda_, epsilon = ("linear", 1) , theta = 1e-5, ):
+        
+        decay, eps = epsilon
+
+        # descr = {"case": i, "algo_name": algo_name , "alpha": alpha, "gamma": gamma, 
+        #          "lambda_":lambda_, "epsilon": epsilon, "theta": theta}
+
+        Case =  {
+            "metadata": {
+                "name": f"",
+                "description": f"Experiment with {algo_name} algorithm, gamma={gamma}, lambda={lambda_}",
+                "num_training_episodes": C.NUM_TRAINING_EPISODES,
+                "num_eval_episodes": C.NUM_EVAL_EPISODES,
+                "render_evaluation": C.RENDER_EVALUATION,
+                "save_ansi_frames": False,
+                "telemetry_episodes_limit": 256,
+                "skip": C.SKIP
+            },
+            "env": {
+                "name": C.ENV_ID,
+            } ,
+            "algorithm": {
+                "name": algo_name ,
+                "params": {
+                    "alpha": alpha,  
+                    "gamma": gamma,
+                    "lambda_": lambda_,
+                    "theta": theta,  # Only for Dynamic Programming
+                }
+            },
+            "strategy": {
+                "name": "EpsilonGreedy",
+                "params":{
+                    "decay": decay,
+                    "initial_epsilon": eps,
+                    "min_epsilon": 0.01,
+                    "epsilon_decay_episodes": C.NUM_TRAINING_EPISODES
+                }
+            }
+        }
+        return Case
