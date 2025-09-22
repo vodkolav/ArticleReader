@@ -138,7 +138,7 @@ def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path_specs
     return combined
 
 
-def test_permutations(self):
+def test_permutations():
 
     grid = {"A": [1,2,3,4,5,6],
             "B": "a b c d e f g h i j".split(' '),
@@ -146,7 +146,7 @@ def test_permutations(self):
             "D": ["J","K"],
             "E": ["P"], 
             }
-    res = self.permutations(grid)
+    res = permutations(grid)
     
     import json
     with open("check.json", 'w+') as f: 
@@ -159,7 +159,7 @@ def test_permutations(self):
 
     print(len(df.drop_duplicates())) 
 
-def permutations(self, grid):
+def permutations( grid):
 
     keys = list(grid.keys())
     n = len(keys)
@@ -167,8 +167,8 @@ def permutations(self, grid):
     layers = [[{keys[l]:v} for v in grid[keys[l]]]  for l in range(n)]
 
     def combine(prev, this):
-        print(prev)
-        print(this)
+        # print(prev)
+        # print(this)
         tmp = [ t.copy() for t in this]
         [th.update(prev) for th in tmp]
         return tmp
@@ -181,3 +181,23 @@ def permutations(self, grid):
         res = sum(res,[])
     return res
 
+
+def upd_path(pth, val, templ):
+    if jq.compile(f'.{pth}?').input(templ).first():
+        jqquery = f'.{pth} = "{val}"'
+        templ = jq.compile(jqquery).input(templ).first() 
+        #print(f"set {k} to {o}")
+        return templ
+    else:
+        print(f"key {pth} not in template")
+        raise KeyError(pth)
+    
+
+def span_grid(grid, templ):
+    cases = []
+    for caSe in permutations(grid):
+        t = templ.copy()
+        for k,v in caSe.items():
+            t = upd_path(k, v, t)
+        cases.append(t) 
+    return cases

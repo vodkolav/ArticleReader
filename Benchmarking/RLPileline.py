@@ -348,7 +348,7 @@ class RLPileline(Pipeline):
 
 
 
-    def span_grid(self, grid, force = False):
+    def span_grid(self, grid):
          #, processed_text, grid
         """
         grid = {"chunk_length": range(50, 500, 50),

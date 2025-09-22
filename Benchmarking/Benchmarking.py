@@ -4,13 +4,46 @@ import os
 import json
 from pathlib import Path
 import pandas as pd
-
+from Pipeline import Pipeline
+from utils import span_grid
 
 class Bench:
+
+    self.force = False
 
     def __init__(self, benchmark_dir = "benchmark", patt = "*"):
         self.benchmark_dir = benchmark_dir
         self.donecases = self.load_benchmarks(patt)
+
+    def configure(self, pipeline: Pipeline, grid: dict, force = False):
+        self.pipeline = pipeline
+        # get template case from pipeline
+        
+           
+
+
+    def unfurl_grid(self, pipeline, grid):
+        # span grid to experiment_configs atop template case
+        """
+        grid = {
+                "device": ["CPU"], 
+                "tts_model": ["tts-tacotron2-ljspeech"],
+                "vocoder_model": ["tts-hifigan-ljspeech"],       
+                "chunk_length": range(50, 500, 50),
+                "batch_size": (1, 2, 3, 5, 10, 20, 30, 50, 70, 100, 200),
+            }
+        """
+        template_case = pipeline.new_case_template
+
+        experiment_configs = span_grid(grid, template_case)
+
+        # TODO: check if cases already done 
+        # if self.force or not (pd.DataFrame([self.case]).iloc[0] == self.donecases).all(axis=1).any():                                
+        #     experiment_configs.append(case)
+        # else:
+        #     # if case in donecases and not force: skip and log
+        #     print("data for case already exists:\n", self.case)
+
 
     def load_benchmarks(self, patt = "*"):
         paths = Path(self.benchmark_dir).glob(patt +".json")
@@ -46,18 +79,16 @@ class Bench:
 
     def run_experiments(self, experiment_configs: list):
         
-        self.benchmark_dir = self.benchmark_dir + "/" + datetime.now().strftime("%Y%m%d-%H%M")
+        self.run_dir = self.benchmark_dir + "/" + datetime.now().strftime("%Y%m%d-%H%M")
         
         # Ensure results directory exists
-        os.makedirs(self.benchmark_dir, exist_ok=True)
+        os.makedirs(self.run_dir, exist_ok=True)
                             #   if case not yet exists
-        if force or not (pd.DataFrame([self.case]).iloc[0] == self.donecases).all(axis=1).any():                                
+        for i, config in enumerate(experiment_configs):
             experiment_run = self.run_case()
             print("saving benchmark data")
-            with open("benchmark/" + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
+            with open(self.run_dir + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
                 json.dump(experiment_run,f, indent=4)
-        else:
-            print("data for case already exists:\n", self.case)
 
 
     def run_experiments_parallel(self, experiment_configs: list, num_cores: int = None ):
