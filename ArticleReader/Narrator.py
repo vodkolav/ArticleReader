@@ -4,12 +4,15 @@ import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 from datetime import timedelta
 import pandas as pd
+from Chunker import Chunker
 
 class Narrator:
     def __init__(self, tts_model = None, vocoder_model = None):
         self.loadModels(tts_model, vocoder_model)
-        self.hop_len = 256 # this should be coming from model hparams
-
+        
+        # these should be coming from model hparams
+        self.hop_len = 256 
+        self.sampling_freq = 22050.0
 
     def loadModels(self, tts_model, vocoder_model):
         # Load SpeechBrain models
@@ -70,7 +73,7 @@ class Narrator:
         return mel_lengths
         # [min(mml,ml + p) for ml,p in zip(mel_lengths, pause)]
 
-    def text_to_speech_df(self, batch_df):# (self, batch_df: pd.DataFrame):
+    def text_to_speech_df(self, batch_df: pd.DataFrame):# (self, batch_df: pd.DataFrame):
 
         # ensure sentences are sorted by seq_len
         batch_df.loc[:,"seq_len"] = batch_df.sentence.map(self.seq_len)
@@ -81,23 +84,43 @@ class Narrator:
 
         waveforms, mel_lengths = self.infer(batch_df.sentence)
         
-        # defining pauses between paragraphs                
+        # Add more pause where needed, e.g between paragraphs (very naive currenty)         
         mel_lengths = self.add_pauses(batch_df.sentence, mel_lengths, pause_dur=40)        
+
+        mel_lengths = mel_lengths.detach().numpy()
+
+        # Add more pause where needed (very naive currenty)
+        batch_df["mel_lengths"] = mel_lengths
+        batch_df["duration"] = mel_lengths * self.hop_len / self.sampling_freq
+        # TODO: something fishy is going on here. the [b,1,smaples] tensor is cut into
+        # array of 0-dim tensors. might affect performance, need to check that
 
         # turning tensor into regular array
         arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
 
-        # TODO: something fishy is going on here. the [b,1,smaples] tensor is cut into
-        # array of 0-dim tensors. might affect performance, need to check that
 
-        # cut padding
-        arr = [a[:, :l] for a, l in zip(arr, mel_lengths * self.hop_len)]
-        
-        mel_lengths = mel_lengths.detach().numpy()
-        batch_df["waveform"] = arr
-        batch_df["mel_lengths"] = mel_lengths
-        batch_df["durations_sec"] = mel_lengths / 22050.0
+        # Cut silence padding while applying pauses from above 
+        batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * self.hop_len)]  
+    
+        # optional: batches are sorted again after recombination
+        batch_df.sort_values("index", inplace=True)
+
+        #batch_df["waveform"] = arr
+        #batch_df["mel_lengths"] = mel_lengths
+        #batch_df["durations_sec"] = mel_lengths / 22050.0
         return batch_df
+
+    def text_to_speech_df_batched(self, chunker: Chunker ) -> pd.DataFrame :
+        # sequential
+        done_dfs = []
+        chunker.sort_by_text_len()
+
+        for btch in chunker.feed_df_batches():
+            btch = self.text_to_speech_df(btch)
+            done_dfs.append(btch)
+
+        done_dfs = pd.concat(done_dfs)
+        return done_dfs
 
     def text_to_speech(self, batch):
 

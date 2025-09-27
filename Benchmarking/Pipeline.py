@@ -1,7 +1,10 @@
 from ArticleReader.Narrator import Narrator
 import torch
+import datetime, os
 from ArticleReader.Chunker import Chunker
+from ArticleReader.LatexToSpeech import LatexParser
 from speechbrain.inference import Tacotron2, HIFIGAN
+from MemoryMonitor import MemoryMonitor
 
 
 class Pipeline:
@@ -9,197 +12,179 @@ class Pipeline:
         pass
 
 class TTSPipeline(Pipeline):
-    def __init__(self, benchmark_dir = "benchmark", patt = "*"):
-        self.benchmark_dir = benchmark_dir
+    def __init__(self, output_dir = "output", checkpoints_dir="checkpoints", patt = "*"):
+        self.output_dir = output_dir
+        self.checkpoints_dir = checkpoints_dir
         self.donecases = self.load_benchmarks(patt) 
+        self.current_case = {}
 
 
-    def init_batch(self, batch_size):
-        # take batches of sorted chunks
-        fr = 0 # beginning from chunk              
-        batch = self.chunker.get_batch_sorted(batch_size, fr)    
+    def init_preprocess(self, new_case):
 
-        #batch = self.chunker.get_test_batch(batch_size, fr)        
-        self.case_objects["batch_size"] = batch
-        self.case["batch_size"] = batch_size
+        input_file = new_case["data"]["test_data"]
 
-    def init_chunker(self, processed_text, chunk_length):
+        parser = LatexParser()
+        content = parser.read_latex(input_file)
+        self.preprocessed_text = parser.custom_latex_to_text(content)
+        self.tables = parser.get_tables()
+
+
+            # save debug info
+        # tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
+        # dbg_dir = "dbg/" + tstp
+        # parser.save_text(self.preprocessed_text, "dbg/postprocessed.txt")
+        # parser.save_text(self.tables, "dbg/tables.tex")
+
+
+    def init_chunker(self, new_case):
+         
+        chunk_length = new_case["meta"]["chunk_length"]
+
         self.chunker = Chunker(max_len=chunk_length)
-        self.chunker.split_text_into_chunks(processed_text)                        
-        self.case_objects["chunk_length"] = self.chunker
-        self.case["chunk_length"] = chunk_length
+        self.chunker.split_text_into_chunks(self.preprocessed_text)
 
-    def init_voc_model(self, voc_model_name):
-        vocoder_model = HIFIGAN.from_hparams(
-                        source=f"{self.provider}/{voc_model_name}",
-                        savedir=f"checkpoints/{voc_model_name}",
-                        run_opts={"device":self.case_objects["device"]} 
+
+    def init_batch(self, new_case):
+
+        batch_size = new_case["meta"]["batch_size"]
+        # take batches of sorted chunks
+        fr = 0 # beginning from chunk
+        self.chunks = self.chunker.get_chunks_sorted(batch_size, fr)    
+
+
+    def init_voc_model(self, new_case ):
+
+        voc_model_name = new_case["model_voc"]["name"]
+        provider = new_case["model_voc"]["provider"]
+
+        self.vocoder_model = HIFIGAN.from_hparams(
+                        source=f"{provider}/{voc_model_name}",
+                        savedir=f"{self.checkpoints_dir}/{voc_model_name}",
+                        run_opts={"device":self.device} 
                         )
-        vocoder_model.id = voc_model_name
+        self.vocoder_model.id = voc_model_name
 
-        # self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        # vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
-                    
-        self.case_objects["vocoder_model"] = vocoder_model
-        self.case["vocoder_model"] = voc_model_name
+        if new_case["model_voc"]["track"]["memory"]:
+            # TODO: decide if attach monitor here or at run
+            self.voc_profiler = MemoryMonitor()
+            self.vocoder_model.decode_batch = self.tts_profiler.attach_to(self.vocoder_model.decode_batch)
 
-    def init_device(self, d):
-        dev = "cuda" if d =="GPU" else "cpu"            
-        self.case_objects["device"] = dev
-        self.case["device"] = d
-        return dev
 
-    def init_tts_model(self, tts_model_name):
+    def init_device(self, new_case):
+        self.device = "cuda" if new_case["meta"]["device"] =="GPU" else "cpu" 
+        # changing device forces re-initialization of models
+        self.init_tts_model(new_case)
+        self.init_voc_model(new_case)
 
-        tts_model = Tacotron2.from_hparams(
-                    source=f"{self.provider}/{tts_model_name}",
-                    savedir=f"checkpoints/{tts_model_name}",
-                    overrides={"max_decoder_steps": 2000},
-                    run_opts={"device":self.case_objects["device"]} 
+
+    def init_tts_model(self, new_case):
+        tts_model_name = new_case["model_tts"]["name"]
+        provider = new_case["model_tts"]["provider"]
+        overrides = new_case["model_tts"].get("overrides", {})
+
+        self.tts_model = Tacotron2.from_hparams(
+                    source=f"{provider}/{tts_model_name}",
+                    savedir=f"{self.checkpoints_dir}/{tts_model_name}",
+                    overrides=overrides,
+                    run_opts={"device":self.device} 
                     )
-        tts_model.id = tts_model_name
-        # self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        # tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
+        self.tts_model.id = tts_model_name
 
-        self.case_objects["tts_model"] = tts_model
-        self.case["tts_model"] = tts_model_name
+        if new_case["model_tts"]["track"]["memory"]:
+            # TODO: decide if attach monitor here or at run
+            self.tts_profiler = MemoryMonitor()
+            self.tts_model.encode_batch = self.tts_profiler.attach_to(self.tts_model.encode_batch)
 
+
+    def init_case(self, new_case):
+
+        if self.current_case == new_case:
+            return  # raise Error;  all fields are already identical, which should not happen
+
+
+        initializers = {
+                "data.test_data": self.init_preprocess, 
+                "meta.device": self.init_device, 
+                "model_tts": self.init_tts_model,
+                "model_voc": self.init_voc_model,
+                "meta.chunk_length": self.init_chunker,
+                "meta.batch_size": self.init_batch,
+            }
+        #TODO: turn these into [][] dict indexing
+        
+        for key, init_func in initializers.items():
+            if key not in new_case:
+                raise ValueError(f"Case is missing required key: {key}")
+
+            if self.current_case[key] != new_case[key]:
+                init_func(new_case)
+                self.current_case["meta.device"] = new_case["meta.device"]
+            else: 
+                continue  # already initialized to the same value
     
-    def run_case(self):
+    
+    def run_case(self, new_case):
 
-        sampling_freq = 22050.0
+        #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
+        #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
+        self.init_case(new_case)
+
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "output/" + tstp
+        case_file = os.path.join(self.output_dir, tstp)
 
-        print(f"{tstp}: running experiment:\n {json.dumps(self.case, indent=2)}")
-
-        device = self.case_objects["device"]
-        tts_model = self.case_objects["tts_model"]
-        vocoder_model = self.case_objects["vocoder_model"]
-        chunk_length = self.case_objects["chunk_length"]
-        batch= self.case_objects["batch_size"]
-
-        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
-
-        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
+        # save chunks as markdown for debugging
+        self.chunker.save_chunks_as_text(case_file + ".md")
 
         # TTS
-        self.narrator = Narrator(tts_model, vocoder_model)        
+        self.narrator = Narrator(self.tts_model, self.vocoder_model)        
         print(" Running text_to_speech_df") 
-        batch_converted = self.narrator.text_to_speech_df(batch)
+        data_converted = self.narrator.text_to_speech_df_batched(self.chunker)
         print(" Done Running text_to_speech_df") 
 
         # restore order of sentences
         print("restore order of sentences")
-        batch_converted.sort_values("index", ascending=True, inplace=True)
+        data_converted.sort_values("index", ascending=True, inplace=True)
 
         # recombine and save sound
         print("recombine batch")
-        waveform = torch.cat(tuple(batch_converted.waveform), dim=1)
+        waveform = torch.cat(tuple(data_converted.waveform), dim=1)
 
         print("saving sound")
         self.narrator.save_audio(case_file + ".wav", waveform)
         print("done saving sound")
 
-        self.chunker.save_chunks_as_text(case_file + ".md", batch)
-
+        #TODO: isolate this into telemetry manager
         # create a report
         print("creating report")
-        durations = batch_converted.durations_sec
+        durations = data_converted.durations_sec
         #durations_sec = (durations / sampling_freq).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
         
         print("writing results")
         result = {
-            "time": tstp,
-            "experiment_id": tstp,
-            "chunk_durations": list(durations),
-            "avg_percent_silence": perc_sile
+            "summary":
+            {
+                "time": tstp,
+                "experiment_id": tstp,
+                "chunk_durations": list(durations),
+                "avg_percent_silence": perc_sile
+            }
         }
-        result.update(self.case)
+        result.update(new_case)
         
         print("combining tts_profiler results")
-        tts_stage = self.summarize_profile(self.tts_profiler)
-        tts_stage.update(result)
-        
+        tts_stage = self.tts_profiler.summarize_profile()
+                
         print("combining vocoder_profiler results")
-        voc_stage = self.summarize_profile(self.vocoder_profiler)
-        voc_stage.update(result)
+        voc_stage = self.voc_profiler.summarize_profile()
 
-        return [tts_stage, voc_stage]
-    
-
-    def run_experiment(self, processed, case):
-        """
-        case = {"device": "CPU", 
-                "tts_model": "tts-tacotron2-ljspeech",
-                "vocoder_model": "tts-hifigan-ljspeech",
-                "batch_size": 2, 
-                "chunk_length": 50 
-       }
-        """
-        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = "benchmark/" + tstp
-
-        self.chunker = Chunker(max_len=case["chunk_length"])
-        self.chunker.split_text_into_chunks(processed)
-        
-        fr = 0 # beginning from chunk
-        chunks = self.chunker.get_test_batch(case["batch_size"], fr)        
-        self.chunker.save_chunks_as_text(case_file + ".md", chunks)
-        
-        provider = "speechbrain"
-
-        dev = "cuda" if case["device"]=="GPU" else "cpu"
-
-        model_name = case["tts_model"]
-        tts_model = Tacotron2.from_hparams(
-                source=f"{provider}/{model_name}",
-                savedir=f"checkpoints/{model_name}",
-                overrides={"max_decoder_steps": 2000},
-                run_opts={"device":dev} 
-        )
-        tts_model.id = model_name
-
-        model_name = case["vocoder_model"]
-        vocoder_model = HIFIGAN.from_hparams(
-                source=f"{provider}/{model_name}",
-                savedir=f"checkpoints/{model_name}",
-                run_opts={"device":dev} 
-            )
-        vocoder_model.id = model_name
-
-        self.tts_profiler = MemoryMonitor(stage="tts", model_id=tts_model.id)
-        tts_model.encode_batch = self.tts_profiler.attach_to(tts_model.encode_batch)
-
-        self.vocoder_profiler = MemoryMonitor(stage="vocoder", model_id=vocoder_model.id)
-        vocoder_model.decode_batch = self.vocoder_profiler.attach_to(vocoder_model.decode_batch)
-        
-
-        self.narrator = Narrator(tts_model, vocoder_model) 
-        waveforms, durations = self.narrator.text_to_speech_batched(chunks)
-        waveform = torch.cat(waveforms, dim=1)
-        self.narrator.save_audio(case_file + ".wav", waveform)
-        
-        sampling_freq = 22050.0
-        durations_sec = (durations / sampling_freq).tolist()
-        perc_sile = 1- sum(durations)/(max(durations)*len(durations))
-
-        
-        result = {
-            "time": tstp,
-            "experiment_id": tstp,
-            "chunk_durations": durations_sec,
-            "avg_percent_silence": perc_sile
+        models_result = {
+            "model_tts": tts_stage,
+            "model_voc": voc_stage
         }
-        result.update(case)
-        
-        tts_stage = self.summarize_profile(self.tts_profiler)
-        tts_stage.update(result)
-        
-        voc_stage = self.summarize_profile(self.vocoder_profiler)
-        voc_stage.update(result)
 
-        return [tts_stage, voc_stage]
+        result.update(models_result)
+
+        return result
+
+

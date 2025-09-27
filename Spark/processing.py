@@ -25,37 +25,37 @@ tts_schema = StructType([
 
 @pandas_udf(tts_schema)
 def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
-  # TODO: calculate and store "seq_len"
-  # TODO: non-default model initialization
-  # TODO: also, for supporting streaming, the models somehow 
-  # have to be persistent between requests
-  narrator = Narrator()  
+    # TODO: calculate and store "seq_len"
+    # TODO: non-default model initialization
+    # TODO: also, for supporting streaming, the models somehow 
+    # have to be persistent between requests
+    batch_df = sentences.to_frame("sentences")
+    batch_df.reset_index(inplace=True)  
+    
+    narrator = Narrator()
+    batch_df = narrator.text_to_speech_df(batch_df)
 
-  # ensure sentences are sorted by seq_len
-  batch_df = sentences.to_frame("sentences")
+    # batch_df.loc[:,"seq_len"] = batch_df.sentences.map(narrator.seq_len)
+    # batch_df.sort_values("seq_len", ascending=False, inplace=True)
+    
+    # batch_df.head(15)
 
-  batch_df.reset_index(inplace=True)  
-  batch_df.loc[:,"seq_len"] = batch_df.sentences.map(narrator.seq_len)
-  batch_df.sort_values("seq_len", ascending=False, inplace=True)
-  
-  batch_df.head(15)
+    # waveforms, mel_lengths = narrator.infer(batch_df.sentences)
 
-  waveforms, mel_lengths = narrator.infer(batch_df.sentences)
+    # arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
 
-  arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
+    # Add more pause where needed (very naive currenty)
+    #batch_df["mel_lengths"] = narrator.add_pauses(batch_df.sentences, mel_lengths, pause_dur=40)   
 
-  # Add more pause where needed (very naive currenty)
-  batch_df["mel_lengths"] = narrator.add_pauses(batch_df.sentences, mel_lengths, pause_dur=40)   
+    #batch_df["duration"] = mel_lengths * narrator.hop_len / 22050.0
 
-  batch_df["duration"] = mel_lengths * narrator.hop_len / 22050.0
+    # Cut silence padding while applying pauses from above 
+    # batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * narrator.hop_len)]  
+    
+    # batch_df.sort_values("index", inplace=True)
 
-  # Cut silence padding while applying pauses from above 
-  batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * narrator.hop_len)]  
-  
-  batch_df.sort_values("index", inplace=True)
-
-  output = batch_df[["waveform", "mel_lengths", "seq_len", "duration"]]
-  return output
+    output = batch_df[["waveform", "mel_lengths", "seq_len", "duration"]]
+    return output
 
 
 def save_to_disk(wav_data, file_path):

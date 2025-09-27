@@ -14,12 +14,13 @@ class MemoryMonitor:
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
 
-    def __init__(self, stage, model_id):
+    def __init__(self): #, stage, model_id):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
-        self.stage = stage
-        self.model_id = model_id
+        # memory monitor needs no metadata on monitored object
+        # self.stage = stage
+        # self.model_id = model_id
         self.process = psutil.Process(os.getpid())
         self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
@@ -102,7 +103,7 @@ class MemoryMonitor:
             VMS = sum(p.memory_info().vms for p in all_processes)
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(),
-                                    "memory": RSS,
+                                    #"memory": RSS,
                                     "RSS": RSS,
                                     "VMS": VMS,
                                     "processes": num_processes,
@@ -157,8 +158,8 @@ class MemoryMonitor:
             memuse=None
 
         res = {
-            "model_id": self.model_id ,  #(name)
-            "stage": self.stage,
+            # "model_id": self.model_id ,  #(name)
+            # "stage": self.stage,
             "max_memory_use": memuse,
             "run_time_sec": dur,
             "memory_log": self.memory_log,

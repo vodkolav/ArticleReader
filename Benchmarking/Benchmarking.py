@@ -11,15 +11,13 @@ class Bench:
 
     self.force = False
 
-    def __init__(self, benchmark_dir = "benchmark", patt = "*"):
-        self.benchmark_dir = benchmark_dir
+    def __init__(self, benchmarks_root = "benchmark", patt = "*"):
+        self.benchmarks_root = benchmarks_root
         self.donecases = self.load_benchmarks(patt)
 
     def configure(self, pipeline: Pipeline, grid: dict, force = False):
         self.pipeline = pipeline
         # get template case from pipeline
-        
-           
 
 
     def unfurl_grid(self, pipeline, grid):
@@ -35,9 +33,10 @@ class Bench:
         """
         template_case = pipeline.new_case_template
 
-        experiment_configs = span_grid(grid, template_case)
+        self.TODOcases = span_grid(grid, template_case)
 
-        # TODO: check if cases already done 
+        # TODO: check if some cases already done 
+        #    if case not yet exists
         # if self.force or not (pd.DataFrame([self.case]).iloc[0] == self.donecases).all(axis=1).any():                                
         #     experiment_configs.append(case)
         # else:
@@ -46,7 +45,7 @@ class Bench:
 
 
     def load_benchmarks(self, patt = "*"):
-        paths = Path(self.benchmark_dir).glob(patt +".json")
+        paths = Path(self.benchmarks_root).glob(patt +".json")
         experiments = [pd.read_json(p, orient="records") for p in paths]
         bnch_data = pd.concat(experiments)
         return bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
@@ -77,17 +76,20 @@ class Bench:
 
 
 
-    def run_experiments(self, experiment_configs: list):
-        
-        self.run_dir = self.benchmark_dir + "/" + datetime.now().strftime("%Y%m%d-%H%M")
+    def run_experiments(self):
+        # sequentially
+        self.run_dir = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
         
         # Ensure results directory exists
         os.makedirs(self.run_dir, exist_ok=True)
-                            #   if case not yet exists
-        for i, config in enumerate(experiment_configs):
-            experiment_run = self.run_case()
+
+        # init the pipeline
+
+        for i, config in enumerate(self.TODOcases):
+            experiment_run = self.pipeline.run_case(config)
             print("saving benchmark data")
             with open(self.run_dir + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
+                # TODO json delamination
                 json.dump(experiment_run,f, indent=4)
 
 
@@ -109,10 +111,10 @@ class Bench:
                 print(f"Detected {num_cores} CPU cores. Using {num_cores} workers.")
 
         # Separate every run of battery of tests to its own dir
-        self.benchmark_dir = self.benchmark_dir + "/" + datetime.now().strftime("%Y%m%d-%H%M")
+        self.benchmarks_root = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
         
         # Ensure results directory exists
-        os.makedirs(self.benchmark_dir, exist_ok=True)
+        os.makedirs(self.benchmarks_root, exist_ok=True)
         
         # Create a multiprocessing Pool
         # The 'with' statement ensures the pool is properly closed
@@ -123,7 +125,7 @@ class Bench:
             async_results = []
             for i, config in enumerate(experiment_configs):
                 print(f"Submitting experiment {i+1}/{len(experiment_configs)}: {config.get('name', 'unnamed')}")
-                result = pool.apply_async(run_case, (config,self.benchmark_dir))
+                result = pool.apply_async(run_case, (config,self.benchmarks_root))
                 async_results.append(result)
 
             # Wait for all tasks to complete and collect results
@@ -147,7 +149,7 @@ class Bench:
             else:
                 print(res["status"], res["timestamp"])
 
-        return all_results, self.benchmark_dir
+        return all_results, self.benchmarks_root
 
 
 

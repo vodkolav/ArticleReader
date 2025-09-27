@@ -66,8 +66,8 @@
 
             "resources": {
                 "rss_mb": 4602.8671875,
-                "size_bytes": 113936,          
-                "vms_mb": 15286988800,      
+                "size_bytes": 113936,
+                "vms_mb": 15286988800,
                 "processes": 1,
                 "num_threads": 76,
                 "per_process_limit": 26281478400.0,

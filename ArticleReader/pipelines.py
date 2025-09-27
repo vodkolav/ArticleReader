@@ -21,14 +21,15 @@ def basicPipeline(test_batch_size = 200):
 
     chunker = Chunker(max_len=200)
     chunker.split_text_into_chunks(processed)
-    chunks = chunker.get_test_batch(test_batch_size, 0)
+    chunks = chunker.get_dbg_subset(test_batch_size, 0)
     # chunks = chunker.chunks
     chunker.save_chunks_as_text(output_file + ".md", chunks)
     print("text chunks:", [len(ch) for ch in chunks])
 
     narrator = Narrator()
     waveforms, durations = narrator.text_to_speech_batched(chunks)
-    durations_sec = durations / 22050.0
+    durations_sec = durations / narrator.sampling_freq
+
 
     print("durations: ", durations_sec)
 
@@ -55,7 +56,7 @@ def textOnlyPipeline(test_batch_size = 200):
 
     chunker = Chunker(max_len=200)
     chunker.split_text_into_chunks(processed)
-    chunks = chunker.get_test_batch(test_batch_size, 0)
+    chunks = chunker.get_dbg_subset(test_batch_size, 0)
     # chunks = chunker.chunks
     chunker.save_chunks_as_text(output_file + ".md", chunks)
     print("text chunks:", [len(ch) for ch in chunks])
