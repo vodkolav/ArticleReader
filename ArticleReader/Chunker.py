@@ -5,13 +5,21 @@ import pandas as pd
 class Chunker:
 
     @property
-    def batch_size(self, batch_size: int):
-        self.batch_size = batch_size
+    def batch_size(self):
+        return self._batch_size
+
+    @batch_size.setter
+    def batch_size(self, new_value):
+        if new_value < 0:
+            raise ValueError("Value cannot be negative.")
+        self._batch_size = new_value
 
 
     # Split simple text into chunks
     def __init__(self, max_len=100):
         self.max_len = max_len
+        self._batch_size = 1 # default
+        self.limit = slice(None)
 
     def breakByWords(self, text):
         ss = re.split(r"[ \n]+", text)
@@ -131,7 +139,7 @@ class Chunker:
         # print(text)
 
         self.chunks = self.breakByParagraphs(text)
-        self.chunks_df = self.as_pandas()
+        
         # self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
         # self.chunks["text_len"] = self.chunks.sentence.str.len()
 
@@ -150,7 +158,11 @@ class Chunker:
         l = len(self.chunks_df)
         n = self.batch_size
         for ndx in range(0, l, n):
-            yield self.chunks_df[ndx : min(ndx + n, l)]
+            # TODO: use iloc? 
+            fr, to = ndx , min(ndx + n, l)
+            print(f"feeding chunks {fr} to {to} out of {l}")
+
+            yield self.chunks_df.iloc[fr : to].copy()
 
     def sort_by_text_len(self):
         self.chunks_df.sort_values("text_len", ascending=False, inplace=True)  
@@ -160,6 +172,9 @@ class Chunker:
         chunks["text_len"] = chunks.sentence.str.len()
         return chunks
 
+    def init_df(self):
+        self.chunks_df = self.as_pandas()[self.limit]
+        
     def get_chunks_sorted(self, n_chunks = 3, start=0):
         df = self.as_pandas().sort_values("text_len", ascending=False)        
         return df.iloc[start : start +n_chunks]
@@ -177,9 +192,9 @@ class Chunker:
     def get_chunks(self):
         return self.chunks
 
-    def save_chunks_as_text(self, filename, chunks):
+    def save_chunks_as_text(self, filename):
         with open(filename, "w+") as f:
-            f.write("\n|".join(chunks))
+            f.write("\n|".join(self.chunks))
 
     def testChunking(self, test, chunks):
         with open("test.txt", "w+") as f:

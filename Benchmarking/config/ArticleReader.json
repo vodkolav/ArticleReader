@@ -4,7 +4,8 @@
         "memory_limit_bytes": 26281478400.0,
         "device": "CPU",
         "chunk_length": 320,
-        "batch_size": 125
+        "batch_size": 125,
+        "limit": [20,30]
     },
     
     "data":{
@@ -13,15 +14,33 @@
 
     "model_tts": {
         "name": "tts-tacotron2-ljspeech",
-        "class":"Tacotron2",
+        "class": "Tacotron2",
         "provider": "speechbrain",
         "stage": "tts",
-        "params": {            
+        "params": {
             "alpha": 0.1,
             "lambda": 0.3,
             "gamma": 0.9
         },
-        "overrides":{"max_decoder_steps": 2000}
+        "overrides":{"max_decoder_steps": 2000},
+        "tracks":{
+            "resources":{
+                "unit": "sample",
+                "samplerate": "1/second",
+                "start": 1740272567.8687654,
+                "points": [{
+                    "i":3826,
+                    "time":1758985756.80367,
+                    "rss_mb": 4602.8671875,
+                    "size_bytes": 113936,
+                    "vms_mb": 15286988800,
+                    "processes": 1,
+                    "num_threads": 76,
+                    "per_process_limit": 26281478400.0,
+                    "free_memory": 21822556000
+                }]
+            }
+        }
     },
 
     "model_voc": {
@@ -34,7 +53,25 @@
             "lambda": 0.3,
             "gamma": 0.9
         },
-        "overrides":{"max_decoder_steps": 2000}
+        "overrides":{"max_decoder_steps": 2000},
+        "tracks":{
+            "resources":{
+                "unit": "sample",
+                "samplerate": "1/second",
+                "start": 1740272567.8687654,
+                "points": [{
+                    "i":3826,
+                    "time":1758985756.80367,
+                    "rss_mb": 4602.8671875,
+                    "size_bytes": 113936,
+                    "vms_mb": 15286988800,
+                    "processes": 1,
+                    "num_threads": 76,
+                    "per_process_limit": 26281478400.0,
+                    "free_memory": 21822556000
+                }]
+            }
+        }
     },
 
     "summary":

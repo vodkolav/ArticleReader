@@ -4,36 +4,33 @@ import os
 import json
 from pathlib import Path
 import pandas as pd
-from Pipeline import Pipeline
-from utils import span_grid
+from Benchmarking.Pipeline import Pipeline
+from Benchmarking.utils import span_grid
 
 class Bench:
 
-    self.force = False
-
-    def __init__(self, benchmarks_root = "benchmark", patt = "*"):
+    def __init__(self, benchmarks_root = "benchmark", patt = "*.json"):
         self.benchmarks_root = benchmarks_root
         self.donecases = self.load_benchmarks(patt)
+        self.force = False
 
-    def configure(self, pipeline: Pipeline, grid: dict, force = False):
+    def configure(self, pipeline: Pipeline):
         self.pipeline = pipeline
         # get template case from pipeline
 
 
-    def unfurl_grid(self, pipeline, grid):
+    def unfurl_grid(self, case_template, grid):
         # span grid to experiment_configs atop template case
         """
-        grid = {
-                "device": ["CPU"], 
-                "tts_model": ["tts-tacotron2-ljspeech"],
-                "vocoder_model": ["tts-hifigan-ljspeech"],       
-                "chunk_length": range(50, 500, 50),
-                "batch_size": (1, 2, 3, 5, 10, 20, 30, 50, 70, 100, 200),
+        grid = {'meta.chunk_length': [75, 100],
+                'meta.batch_size': (2, 3),
+                'model_tts.name': ['tts-tacotron2-ljspeech'],
+                'model_voc.name': ['tts-hifigan-ljspeech'],
+                'meta.device': ['CPU']
             }
         """
-        template_case = pipeline.new_case_template
 
-        self.TODOcases = span_grid(grid, template_case)
+        self.TODOcases = span_grid(grid, case_template)
 
         # TODO: check if some cases already done 
         #    if case not yet exists
@@ -47,8 +44,10 @@ class Bench:
     def load_benchmarks(self, patt = "*"):
         paths = Path(self.benchmarks_root).glob(patt +".json")
         experiments = [pd.read_json(p, orient="records") for p in paths]
-        bnch_data = pd.concat(experiments)
-        return bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
+        if experiments:
+            experiments = pd.concat(experiments)
+        return experiments
+        #bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
 
 
     def summary(Cases):
@@ -76,7 +75,7 @@ class Bench:
 
 
 
-    def run_experiments(self):
+    def run_experiments(self, force = False):
         # sequentially
         self.run_dir = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
         
@@ -88,7 +87,7 @@ class Bench:
         for i, config in enumerate(self.TODOcases):
             experiment_run = self.pipeline.run_case(config)
             print("saving benchmark data")
-            with open(self.run_dir + experiment_run[0]["experiment_id"] + ".json", "w+") as f:
+            with open(self.run_dir + experiment_run['summary']["experiment_id"] + ".json", "w+") as f:
                 # TODO json delamination
                 json.dump(experiment_run,f, indent=4)
 
@@ -178,7 +177,3 @@ class Bench:
         print("done.")
         return experiments, episodes
 
-
-
-
-                                   

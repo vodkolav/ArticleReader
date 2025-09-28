@@ -35,6 +35,7 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
     narrator = Narrator()
     batch_df = narrator.text_to_speech_df(batch_df)
 
+    raise NotImplemented("TODO: need to convert waveforms column from tensors to numpy first")
     # batch_df.loc[:,"seq_len"] = batch_df.sentences.map(narrator.seq_len)
     # batch_df.sort_values("seq_len", ascending=False, inplace=True)
     
@@ -54,7 +55,7 @@ def predict_batch_udf(sentences: pd.Series) -> pd.DataFrame:
     
     # batch_df.sort_values("index", inplace=True)
 
-    output = batch_df[["waveform", "mel_lengths", "seq_len", "duration"]]
+    output = batch_df[["waveform", "mel_lengths", "seq_len", "durations_sec"]]
     return output
 
 

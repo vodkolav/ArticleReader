@@ -4,7 +4,7 @@ import torchaudio
 from speechbrain.inference import Tacotron2, HIFIGAN
 from datetime import timedelta
 import pandas as pd
-from Chunker import Chunker
+from typing import Iterable
 
 class Narrator:
     def __init__(self, tts_model = None, vocoder_model = None):
@@ -91,7 +91,7 @@ class Narrator:
 
         # Add more pause where needed (very naive currenty)
         batch_df["mel_lengths"] = mel_lengths
-        batch_df["duration"] = mel_lengths * self.hop_len / self.sampling_freq
+        batch_df["durations_sec"] = mel_lengths * self.hop_len / self.sampling_freq
         # TODO: something fishy is going on here. the [b,1,smaples] tensor is cut into
         # array of 0-dim tensors. might affect performance, need to check that
 
@@ -100,7 +100,7 @@ class Narrator:
 
 
         # Cut silence padding while applying pauses from above 
-        batch_df["waveform"] = [a[:, :l].squeeze(0).numpy() for a, l in zip(arr, mel_lengths * self.hop_len)]  
+        batch_df["waveform"] = [a[:, :l] for a, l in zip(arr, mel_lengths * self.hop_len)]  
     
         # optional: batches are sorted again after recombination
         batch_df.sort_values("index", inplace=True)
@@ -110,12 +110,11 @@ class Narrator:
         #batch_df["durations_sec"] = mel_lengths / 22050.0
         return batch_df
 
-    def text_to_speech_df_batched(self, chunker: Chunker ) -> pd.DataFrame :
+    def text_to_speech_df_batched(self, batches: Iterable[pd.DataFrame]) -> pd.DataFrame :
         # sequential
         done_dfs = []
-        chunker.sort_by_text_len()
 
-        for btch in chunker.feed_df_batches():
+        for btch in batches:
             btch = self.text_to_speech_df(btch)
             done_dfs.append(btch)
 

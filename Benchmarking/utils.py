@@ -182,9 +182,25 @@ def permutations( grid):
     return res
 
 
-def upd_path(pth, val, templ):
+def get_path(pth, templ):
+    val = jq.compile(f'.{pth}?').input(templ).first()
+    if val:
+        return val
+    else:
+        raise KeyError(pth)
+
+
+def qua(val):
+    if isinstance(val, str):
+        val = val.strip('"')
+        val = f'"{val}"'
+    return val
+
+
+def upd_path(pth, templ, val):
     if jq.compile(f'.{pth}?').input(templ).first():
-        jqquery = f'.{pth} = "{val}"'
+        val = qua(val)
+        jqquery = f'.{pth} = {val}'
         templ = jq.compile(jqquery).input(templ).first() 
         #print(f"set {k} to {o}")
         return templ
@@ -197,7 +213,12 @@ def span_grid(grid, templ):
     cases = []
     for caSe in permutations(grid):
         t = templ.copy()
+        # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
-            t = upd_path(k, v, t)
+            t = upd_path(k, t, v)
         cases.append(t) 
     return cases
+
+def brpt_anchr(var, val):
+    if var == val:
+        print("break me fully")
