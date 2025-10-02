@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import pandas as pd
+from Benchmarking.telemetry_manager import TelemetryManager
 
 class Chunker:
 
@@ -13,6 +14,15 @@ class Chunker:
         if new_value < 0:
             raise ValueError("Value cannot be negative.")
         self._batch_size = new_value
+
+    @property
+    def telemetry(self) -> TelemetryManager:
+        #TODO: allow for dummy telemetry that does nothing
+        return self.tele
+
+    @telemetry.setter
+    def telemetry(self, value: TelemetryManager ):
+        self.tele = value
 
 
     # Split simple text into chunks
@@ -157,10 +167,13 @@ class Chunker:
     def feed_df_batches(self, ):
         l = len(self.chunks_df)
         n = self.batch_size
+        self.tele.total_episodes = int(l/n)
         for ndx in range(0, l, n):
-            # TODO: use iloc? 
+            
             fr, to = ndx , min(ndx + n, l)
-            print(f"feeding chunks {fr} to {to} out of {l}")
+            i = int(ndx/n)
+            msg = f"feeding chunks {fr} to {to} out of {l}"
+            self.tele.record_episode(i, msg) # TODO: report something more useful
 
             yield self.chunks_df.iloc[fr : to].copy()
 

@@ -1,7 +1,7 @@
 from ArticleReader.Chunker import Chunker
 from ArticleReader.LatexToSpeech import LatexParser
 from ArticleReader.Narrator import Narrator
-from Benchmarking.MemoryMonitor import MemoryMonitor
+
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import get_path, upd_path
 
@@ -15,9 +15,12 @@ import json
 
 
 class TTSPipeline(Pipeline):
-    def __init__(self, output_dir = "output", checkpoints_dir="checkpoints", patt = "*"):
+    def __init__(self, output_dir = "output", 
+                 checkpoints_dir="checkpoints", 
+                 patt = "*"):
         self.output_dir = output_dir
         self.checkpoints_dir = checkpoints_dir
+        # self.tele = None
         self.initializers = {
                 "data.test_data": self.init_preprocess,
                 "meta.device": self.init_device,
@@ -28,6 +31,32 @@ class TTSPipeline(Pipeline):
             }
         self.current_case = {}
         #self.first = True
+
+
+    def init_telemetry(self, new_case):
+
+        # self.tele.__init__() #? 
+        # TODO: implement addressing tracks of particular pipeline components 
+        # through jq path, eg: .model_tts.tracks.resources
+
+        #if new_case["tracks"]["resources"]:
+            # TODO: attach monitors for particular pipeline components 
+        #    self.run_case = self.tele.add_memory_monitor(self.run_case, "" )
+
+        # if new_case["tracks"]["log"]:
+        #     self.tele.enable_logging()
+
+
+        # model = new_case["model_voc"]
+        # if model["tracks"]["resources"]:
+        #     # TODO: decide if attach monitor here or at run
+                # actually I don't need to attach this to different models, as the monitor just tracks
+                # the memory usage of the whole process.
+        #     self.vocoder_model.decode_batch = self.tele.add_memory_monitor(self.vocoder_model.decode_batch, "model_voc")
+
+        self.narrator.telemetry = self.tele
+        self.chunker.telemetry = self.tele
+        self.tele.start(new_case)
 
 
     def init_preprocess(self, new_case):
@@ -61,11 +90,13 @@ class TTSPipeline(Pipeline):
         lim = new_case["meta"].get("limit",None)
         if lim:
             a, b = lim
-            print(f"limited to chunks {a} to {b}")
+            self.tele.print(f"limited to chunks {a} to {b}")
             self.chunker.limit = slice(a,b)
 
         self.chunker.init_df()
-
+        
+        self.narrator = Narrator(self.tts_model, self.vocoder_model)
+                
         # TODO implement: 
         #fr = 0 # beginning from chunk
 
@@ -83,11 +114,6 @@ class TTSPipeline(Pipeline):
                         run_opts={"device":self.device}
                         )
         self.vocoder_model.id = voc_model_name
-
-        if model["tracks"]["resources"]:
-            # TODO: decide if attach monitor here or at run
-            self.voc_profiler = MemoryMonitor()
-            self.vocoder_model.decode_batch = self.tts_profiler.attach_to(self.vocoder_model.decode_batch)
 
 
     def init_device(self, new_case):
@@ -111,11 +137,6 @@ class TTSPipeline(Pipeline):
                     )
         self.tts_model.id = tts_model_name
 
-        if model["tracks"]["resources"]:
-            # TODO: decide if attach monitor here or at run or at telemetry manager
-            self.tts_profiler = MemoryMonitor()
-            self.tts_model.encode_batch = self.tts_profiler.attach_to(self.tts_model.encode_batch)
-
 
     def case_template(self):
         # /home/michael/Projects/ArticleReader/
@@ -123,9 +144,10 @@ class TTSPipeline(Pipeline):
         with open(fl, 'r') as f:
             templ = json.load(f)
         return templ
-    
+
 
     def init_case(self, new_case):
+        # TODO: move to base class? 
 
         if self.current_case == new_case:
             return  # raise Error;  all fields are already identical, which should not happen
@@ -135,7 +157,6 @@ class TTSPipeline(Pipeline):
             self.current_case = new_case
             first = True  # raise Error;  all fields are already identical, which should not happen
 
-        #TODO: turn these into [][] dict indexing
         #TODO: check for all parameters in cases, whether they've changed - not just initializers
 
         for key, init_func in self.initializers.items():
@@ -151,14 +172,19 @@ class TTSPipeline(Pipeline):
             else:
                 continue  # already initialized to the same value
         first = False
+        self.init_telemetry(new_case)
+
 
     def run_case(self, new_case):
+        
+        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
+
+        new_case["summary"]["experiment_id"] = tstp
 
         #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
         #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
         self.init_case(new_case)
 
-        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
         case_file = os.path.join(self.output_dir, tstp)
 
         # save chunks as markdown for debugging
@@ -168,53 +194,44 @@ class TTSPipeline(Pipeline):
         # sort chunks by len for effeciency
         self.chunker.sort_by_text_len()
 
-        self.narrator = Narrator(self.tts_model, self.vocoder_model)
-        print(" Running text_to_speech_df")
+        self.tele.print(" Running text_to_speech_df")
         data_converted = self.narrator.text_to_speech_df_batched(self.chunker.feed_df_batches())
-        print(" Done Running text_to_speech_df")
+        self.tele.print(" Done Running text_to_speech_df")
 
         # restore order of sentences
-        print("restore order of sentences")
+        self.tele.print("restore order of sentences")
         data_converted.sort_values("index", ascending=True, inplace=True)
 
         # recombine and save sound
-        print("recombine batch")
+        self.tele.print("recombine batch")
         waveform = torch.cat(tuple(data_converted.waveform), dim=1)
 
-        print("saving sound")
+        self.tele.print("saving sound")
         self.narrator.save_audio(case_file + ".wav", waveform)
-        print("done saving sound")
+        self.tele.print("done saving sound")
 
-        #TODO: isolate this into telemetry manager
+        self.close_case(new_case, data_converted)
+        
+        return self.tele.results()
+
+
+    def close_case(self, new_case, data_converted):
+        # TODO: isolate this into telemetry manager
         # create a report
-        print("creating report")
+        self.tele.print("creating report")
         durations = data_converted.durations_sec
         #durations_sec = (durations / sampling_freq).tolist()
         perc_sile = 1- sum(durations)/(max(durations)*len(durations))
 
-        print("writing results")
-        result = {
-            "summary":
-            {
-                "time": tstp,
-                "experiment_id": tstp,
+        self.tele.print("writing results")
+        misc = {
+
+                # "time": tstp,
+                # "experiment_id": tstp,
                 "chunk_durations": list(durations),
                 "avg_percent_silence": perc_sile
-            }
-        }
-        result.update(new_case)
-
-        print("combining tts_profiler results")
-        tts_stage = self.tts_profiler.summarize_profile()
-
-        print("combining vocoder_profiler results")
-        voc_stage = self.voc_profiler.summarize_profile()
-
-        models_result = {
-            "model_tts": tts_stage,
-            "model_voc": voc_stage
         }
 
-        result.update(models_result)
-
-        return result
+        self.tele.misc(misc)
+        self.tele.end()
+        #result.update(models_result)

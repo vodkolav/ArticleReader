@@ -14,7 +14,7 @@ class MemoryMonitor:
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
 
-    def __init__(self): #, stage, model_id):
+    def __init__(self, interval_sec: float = 0.1): #, stage, model_id):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
@@ -24,7 +24,7 @@ class MemoryMonitor:
         self.process = psutil.Process(os.getpid())
         self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
-        self.interval = 0.1
+        self.interval = interval_sec
 
     def get_free_memory_bytes(self):
         with open('/proc/meminfo', 'r') as mem:
@@ -104,8 +104,8 @@ class MemoryMonitor:
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(),
                                     #"memory": RSS,
-                                    "RSS": RSS,
-                                    "VMS": VMS,
+                                    "RSS_mb": RSS,
+                                    "VMS_mb": VMS,
                                     "processes": num_processes,
                                     "num_threads": self.process.num_threads(),
                                     "per_process_limit":per_process_limit,
@@ -148,10 +148,14 @@ class MemoryMonitor:
     def summarize_profile(self):
 
         if len(self.memory_log)>1:
-            data = pd.DataFrame(self.memory_log)
-            data['time'] = pd.to_datetime(data['time'], unit='s')
-            dur = (data.time.max() - data.time.min()).total_seconds()
-            memuse = data['memory'].max()
+            # data = pd.DataFrame(self.memory_log)
+            # data['time'] = pd.to_datetime(data['time'], unit='s')
+            # dur = (data.time.max() - data.time.min()).total_seconds()
+            a = self.memory_log[0]['time']
+            b = self.memory_log[-1]['time']
+            dur = b-a
+            memuse = 100500 # TODO: track this during monitoring 
+            #  data['memory'].max()
             #dur = str(dur.microseconds/1e6)
         else:
             dur=0
@@ -160,9 +164,12 @@ class MemoryMonitor:
         res = {
             # "model_id": self.model_id ,  #(name)
             # "stage": self.stage,
+            "ivl_unit": "second",
+            "interval": self.interval ,
+            #"start": 1740272567.8687654,
             "max_memory_use": memuse,
             "run_time_sec": dur,
-            "memory_log": self.memory_log,
+            "data": self.memory_log,
             "exceptions": self.exception,
             "memory_limit_bytes": self.memory_limit_bytes,
             "n_threads": None

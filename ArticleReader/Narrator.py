@@ -5,6 +5,7 @@ from speechbrain.inference import Tacotron2, HIFIGAN
 from datetime import timedelta
 import pandas as pd
 from typing import Iterable
+from Benchmarking.telemetry_manager import TelemetryManager
 
 class Narrator:
     def __init__(self, tts_model = None, vocoder_model = None):
@@ -12,7 +13,17 @@ class Narrator:
         
         # these should be coming from model hparams
         self.hop_len = 256 
-        self.sampling_freq = 22050.0
+        self.sampling_freq = 22050
+
+    @property
+    def telemetry(self) -> TelemetryManager:
+        #TODO: allow for dummy telemetry that does nothing
+        return self.tele
+
+    @telemetry.setter
+    def telemetry(self, value: TelemetryManager ):
+        self.tele = value
+
 
     def loadModels(self, tts_model, vocoder_model):
         # Load SpeechBrain models
@@ -233,7 +244,7 @@ class Narrator:
         )
 
     def save_audio(self, output_wav, waveform):
-        torchaudio.save(output_wav, waveform, 22050, format="wav")
+        torchaudio.save(output_wav, waveform, self.sampling_freq, format="wav")
         print(f"Audio saved to {output_wav}")
 
 

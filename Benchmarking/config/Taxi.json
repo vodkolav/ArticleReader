@@ -1,99 +1,105 @@
 {
-    "meta": {
-        "name": "",
-        "description": "Experiment with SARSA algorithm, gamma=0.9, lambda=0.3",
-        "mode": "training",
-        "num_episodes": 7296,
-        "render_evaluation": false,
-        "save_ansi_frames": false,
-        "telemetry_episodes_limit": 256,
-        "verbosity": 1,
-        "skip": false,     
-        "device": "CPU",   
-        "episodeUnit":"episode"
-    },
-
-    "summary":{
-        "pid": 1520267,
-        "experiment_id": "SARSA_20250618-215531-766833_1520267",      
-        "start_time": "20250618-215531-766833",
-        "end_time": "20250618-220813-382344",
-        "init_rss_mb": 4599.7421875
-    },
-
-    "data": "No Data",
-
-
-    "env": {        
-        "name": "Taxi-v3",
-        "class":"TaxiV3",
-        "params": {"id": "Taxi-v3"
+  "meta": {
+    "name": "",
+    "description": "Experiment with SARSA algorithm, gamma=0.9, lambda=0.3",
+    "mode": "training",
+    "num_episodes": 7296,
+    "render_evaluation": false,
+    "save_ansi_frames": false,
+    "telemetry_episodes_limit": 256,
+    "verbosity": 1,
+    "skip": false,
+    "device": "CPU",
+    "episodeUnit": "episode"
+  },
+  "summary": {
+    "pid": 1520267,
+    "experiment_id": "SARSA_20250618-215531-766833_1520267",
+    "start_time": "20250618-215531-766833",
+    "end_time": "20250618-220813-382344",
+    "init_rss_mb": 4599.7421875
+  },
+  "data": "No Data",
+  "env": {
+    "name": "Taxi-v3",
+    "class": "TaxiV3",
+    "params": {
+      "id": "Taxi-v3"
+    }
+  },
+  "model": {
+    "name": "Sarsa",
+    "class": "SARSA",
+    "params": {
+      "alpha": 0.1,
+      "lambda": 0.3,
+      "gamma": 0.9
+    }
+  },
+  "strategy": {
+    "name": "EpsilonGreedy",
+    "params": {
+      "initial_epsilon": 1,
+      "min_epsilon": 0.01,
+      "epsilon_decay_episodes": 7296,
+      "decay": "linear"
+    }
+  },
+  "tracks": {
+    "episodes": {
+      "sampling_type": "total_samples",
+      "sampling_value": 100,
+      "data": [
+        {
+          "i": 8159,
+          "fps": 38,
+          "start": 1750273693.2349513,
+          "end": 1750273693.2393124,
+          "length_steps": 238,
+          "terminated": false,
+          "truncated": true,
+          "epsilon": 0.01013569078947374,
+          "reward": -893,
+          "replay": [],
+          "info": [],
+          "internal_state": {
+            "368": [
+              -0.6695559172288863,
+              -0.9619952449285123,
+              -0.6235718174610724,
+              -0.58105114408195,
+              -1.1832461319866863,
+              -5.486300785529679
+            ],
+            "268": [
+              -0.7089298919607719,
+              -0.89168594420174,
+              -0.9720590224493957,
+              -1.283835078272617,
+              -4.091619316358982,
+              -3.1925457942838533
+            ]
+          }
         }
+      ]
     },
-
-    "model": {
-        "name": "Sarsa",
-        "class":"SARSA",
-        "params": {            
-            "alpha": 0.1,
-            "lambda": 0.3,
-            "gamma": 0.9
+    "resources": {
+      "sampling_type": "interval_sec",
+      "sampling_value": 0.5,
+      "start": 1740272567.8687654,
+      "data": [
+        {
+          "i": 8159,
+          "time": 1740272567.8687654,
+          "rss_mb": 4602.8671875,
+          "size_bytes": 113936,
+          "vms_mb": 15286988800,
+          "processes": 1,
+          "num_threads": 76,
+          "per_process_limit": 26281478400,
+          "free_memory": 21822556000
         }
-    },
-
-    "strategy": {
-        "name": "EpsilonGreedy",
-        "params": {
-            "initial_epsilon": 1,
-            "min_epsilon": 0.01,
-            "epsilon_decay_episodes": 7296,
-            "decay": "linear"
-        }
-    },
-
-    "progress": [
-        {            
-            "i": 8159,
-            "fps": 38,
-            "start": 1750273693.2349513,
-            "end": 1750273693.2393124,
-
-            "length_steps": 238,
-            "terminated": false,
-            "truncated": true,
-            "epsilon": 0.01013569078947374,
-            "reward": -893,
-
-            "resources": {
-                "rss_mb": 4602.8671875,
-                "size_bytes": 113936,
-                "vms_mb": 15286988800,
-                "processes": 1,
-                "num_threads": 76,
-                "per_process_limit": 26281478400.0,
-                "free_memory": 21822556000
-            },
-
-            "replay": [],
-            "info": [],
-            "internal_state": {
-                "368": [
-                    -0.6695559172288863,
-                    -0.9619952449285123,
-                    -0.6235718174610724,
-                    -0.58105114408195,
-                    -1.1832461319866863,
-                    -5.486300785529679
-                ],
-                "268": [
-                    -0.7089298919607719,
-                    -0.89168594420174,
-                    -0.9720590224493957,
-                    -1.283835078272617,
-                    -4.091619316358982,
-                    -3.1925457942838533
-                ]
-            }
-        }
-    ]
+      ]
+    }
+  }
 }

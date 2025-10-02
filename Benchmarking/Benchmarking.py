@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid
+from Benchmarking.telemetry_manager import TelemetryManager
 
 class Bench:
 
@@ -15,6 +16,9 @@ class Bench:
         self.force = False
 
     def configure(self, pipeline: Pipeline):
+        
+        telemetry = TelemetryManager()
+        pipeline.set_telemetry(telemetry)
         self.pipeline = pipeline
         # get template case from pipeline
 

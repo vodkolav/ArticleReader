@@ -1,5 +1,5 @@
 #v2.py
-
+import json
 import jq
 from typing import Dict, Any, List, Union, Tuple
 
@@ -194,6 +194,8 @@ def qua(val):
     if isinstance(val, str):
         val = val.strip('"')
         val = f'"{val}"'
+    elif isinstance(val, dict):
+        val = json.dumps(val)
     return val
 
 

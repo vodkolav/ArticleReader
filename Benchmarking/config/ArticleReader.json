@@ -1,105 +1,126 @@
 {
-    "meta":
-    {
-        "memory_limit_bytes": 26281478400.0,
-        "device": "CPU",
-        "chunk_length": 320,
-        "batch_size": 125,
-        "limit": [20,30]
-    },
-    
-    "data":{
-        "test_data": "data/arXiv-2106.04624v1/main.tex"
-    },
-
-    "model_tts": {
-        "name": "tts-tacotron2-ljspeech",
-        "class": "Tacotron2",
-        "provider": "speechbrain",
-        "stage": "tts",
-        "params": {
-            "alpha": 0.1,
-            "lambda": 0.3,
-            "gamma": 0.9
-        },
-        "overrides":{"max_decoder_steps": 2000},
-        "tracks":{
-            "resources":{
-                "unit": "sample",
-                "samplerate": "1/second",
-                "start": 1740272567.8687654,
-                "points": [{
-                    "i":3826,
-                    "time":1758985756.80367,
-                    "rss_mb": 4602.8671875,
-                    "size_bytes": 113936,
-                    "vms_mb": 15286988800,
-                    "processes": 1,
-                    "num_threads": 76,
-                    "per_process_limit": 26281478400.0,
-                    "free_memory": 21822556000
-                }]
-            }
-        }
-    },
-
-    "model_voc": {
-        "name": "tts-hifigan-ljspeech",
-        "class": "HIFIGAN",
-        "provider": "speechbrain",
-        "stage": "vocoder",
-        "params": {            
-            "alpha": 0.1,
-            "lambda": 0.3,
-            "gamma": 0.9
-        },
-        "overrides":{"max_decoder_steps": 2000},
-        "tracks":{
-            "resources":{
-                "unit": "sample",
-                "samplerate": "1/second",
-                "start": 1740272567.8687654,
-                "points": [{
-                    "i":3826,
-                    "time":1758985756.80367,
-                    "rss_mb": 4602.8671875,
-                    "size_bytes": 113936,
-                    "vms_mb": 15286988800,
-                    "processes": 1,
-                    "num_threads": 76,
-                    "per_process_limit": 26281478400.0,
-                    "free_memory": 21822556000
-                }]
-            }
-        }
-    },
-
-    "summary":
-    {        
-        "time": "25.02.23-03.02.47",
-        "max_memory_use": 3931697152.0,
-        "run_time_sec": 196.09138,
-        "avg_percent_silence": 0.2063680000000001,
-        "exceptions": null,        
-        "n_threads": null,
-        "experiment_id": "25.02.23-03.02.47"
-    },
-
-    "progress": [
-        {
-            "unit": "sample",
-            "i":3826,
-            "samplerate": "1/second",
-            "start": 1740272567.8687654,
-            "resources": {
-                "rss_mb": 4602.8671875,
-                "size_bytes": 113936,          
-                "vms_mb": 15286988800,      
-                "processes": 1,
-                "num_threads": 76,
-                "per_process_limit": 26281478400.0,
-                "free_memory": 21822556000
-            }
-        }        
+  "meta": {
+    "memory_limit_bytes": 26281478400,
+    "device": "CPU",
+    "chunk_length": 320,
+    "batch_size": 125,
+    "limit": [
+      20,
+      25
     ]
+  },
+  "data": {
+    "test_data": "data/arXiv-2106.04624v1/main.tex"
+  },
+  "model_tts": {
+    "name": "tts-tacotron2-ljspeech",
+    "class": "Tacotron2",
+    "provider": "speechbrain",
+    "stage": "tts",
+    "params": {
+      "alpha": 0.1,
+      "lambda": 0.3,
+      "gamma": 0.9
+    },
+    "overrides": {
+      "max_decoder_steps": 2000
+    },
+    "tracks": {
+      "resources": {
+        "sampling_type": "interval_sec",
+        "sampling_value": 0.1,
+        "start": 1740272567.8687654,
+        "data": [
+          {
+            "i": 3826,
+            "time": 1758985756.80367,
+            "rss_mb": 4602.8671875,
+            "size_bytes": 113936,
+            "vms_mb": 15286988800,
+            "processes": 1,
+            "num_threads": 76,
+            "per_process_limit": 26281478400,
+            "free_memory": 21822556000
+          }
+        ]
+      }
+    }
+  },
+  "model_voc": {
+    "name": "tts-hifigan-ljspeech",
+    "class": "HIFIGAN",
+    "provider": "speechbrain",
+    "stage": "vocoder",
+    "params": {
+      "alpha": 0.1,
+      "lambda": 0.3,
+      "gamma": 0.9
+    },
+    "overrides": {
+      "max_decoder_steps": 2000
+    },
+    "tracks": {
+      "resources": {
+        "sampling_type": "interval_sec",
+        "sampling_value": 0.1,
+        "start": 1740272567.8687654,
+        "data": [
+          {
+            "i": 3826,
+            "time": 1758985756.80367,
+            "rss_mb": 4602.8671875,
+            "size_bytes": 113936,
+            "vms_mb": 15286988800,
+            "processes": 1,
+            "num_threads": 76,
+            "per_process_limit": 26281478400,
+            "free_memory": 21822556000
+          }
+        ]
+      }
+    }
+  },
+  "summary": {
+    "time": "25.02.23-03.02.47",
+    "max_memory_use": 3931697152,
+    "run_time_sec": 196.09138,
+    "avg_percent_silence": 0.2063680000000001,
+    "exceptions": null,
+    "n_threads": null,
+    "experiment_id": "25.02.23-03.02.47"
+  },
+  "tracks": {
+    "episodes": {
+      "sampling_type": "interval_episodes",
+      "sampling_value": 1,
+      "data": [
+        {
+          "i": 3826,
+          "rss_mb": 4602.8671875,
+          "size_bytes": 113936,
+          "vms_mb": 15286988800,
+          "processes": 1,
+          "num_threads": 76,
+          "per_process_limit": 26281478400,
+          "free_memory": 21822556000
+        }
+      ]
+    },
+    "log": {
+      "sampling_type": "on_demand",
+      "sampling_value": null,
+      "data": [
+        {
+          "time": 434234234,
+          "message": "yes we log!",
+          "type": "info"
+        }
+      ]
+    },
+    "resources": {
+      "sampling_type": "interval_sec",
+      "sampling_value": 0.1,
+      "data": ["blabla"]
+    }
+  }
 }
