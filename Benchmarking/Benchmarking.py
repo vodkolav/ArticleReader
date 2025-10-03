@@ -81,7 +81,8 @@ class Bench:
 
     def run_experiments(self, force = False):
         # sequentially
-        self.run_dir = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
+        experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
+        self.run_dir = os.path.join(self.benchmarks_root, experiment_id)
         
         # Ensure results directory exists
         os.makedirs(self.run_dir, exist_ok=True)
@@ -89,11 +90,17 @@ class Bench:
         # init the pipeline
 
         for i, config in enumerate(self.TODOcases):
+            config['summary']["experiment_id"] = experiment_id
             experiment_run = self.pipeline.run_case(config)
             print("saving benchmark data")
-            with open(self.run_dir + experiment_run['summary']["experiment_id"] + ".json", "w+") as f:
-                # TODO json delamination
-                json.dump(experiment_run,f, indent=4)
+            case_id = experiment_run['summary']["case_id"]
+            tstp    = experiment_run['summary']["timestamp"]
+            
+            dest = os.path.join(self.run_dir , tstp +"."+ case_id + ".json")
+
+            with open(dest, "w+") as f:
+                # TODO: json delamination
+                json.dump(experiment_run,f, indent=2)
 
 
     def run_experiments_parallel(self, experiment_configs: list, num_cores: int = None ):

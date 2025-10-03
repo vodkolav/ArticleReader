@@ -121,16 +121,40 @@ class Narrator:
         #batch_df["durations_sec"] = mel_lengths / 22050.0
         return batch_df
 
-    def text_to_speech_df_batched(self, batches: Iterable[pd.DataFrame]) -> pd.DataFrame :
+
+    def text_to_speech_df_batched(self, batchIterator: Iterable[pd.DataFrame]) -> pd.DataFrame :
         # sequential
         done_dfs = []
 
-        for btch in batches:
+        for i_btch, btch in enumerate(batchIterator):
+            # TODO: add measurement of runtime of a batch
+            # probably should be some decorator that attaches to text_to_speech_df
             btch = self.text_to_speech_df(btch)
             done_dfs.append(btch)
-
+            
+            self.tele.record_episode(i_btch, self.batch_summary(i_btch, btch))
+            
         done_dfs = pd.concat(done_dfs)
         return done_dfs
+
+
+    def batch_summary(self, i_batch, batch_df):
+
+        import json
+        durations = batch_df.durations_sec
+        batch_df["percent_silence"] = 1 - durations/max(durations)
+
+        cols = ["index", "text_len", "seq_len", "durations_sec", "percent_silence"]
+        
+        # Horrible implementation 
+        chunks = batch_df[cols].to_json(orient='records') # df -> json text
+        chunks = json.loads(chunks) # json text -> json obj (dict)
+        summ = {
+            "batch": i_batch,
+            "chunks": chunks
+        }
+        return summ
+
 
     def text_to_speech(self, batch):
 

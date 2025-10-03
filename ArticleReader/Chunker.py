@@ -167,13 +167,13 @@ class Chunker:
     def feed_df_batches(self, ):
         l = len(self.chunks_df)
         n = self.batch_size
-        self.tele.total_episodes = int(l/n)
+        self.tele.total_episodes = int(np.ceil(l/n))
         for ndx in range(0, l, n):
-            
+
             fr, to = ndx , min(ndx + n, l)
             i = int(ndx/n)
             msg = f"feeding chunks {fr} to {to} out of {l}"
-            self.tele.record_episode(i, msg) # TODO: report something more useful
+            self.tele.print(msg) # TODO: report something more useful
 
             yield self.chunks_df.iloc[fr : to].copy()
 

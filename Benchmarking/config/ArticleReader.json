@@ -81,13 +81,14 @@
     }
   },
   "summary": {
-    "time": "25.02.23-03.02.47",
+    "timestamp": "25.02.23-03.02.47",
     "max_memory_use": 3931697152,
     "run_time_sec": 196.09138,
     "avg_percent_silence": 0.2063680000000001,
     "exceptions": null,
     "n_threads": null,
-    "experiment_id": "25.02.23-03.02.47"
+    "experiment_id": "25.02.23-03.02.47",
+    "case_id": "necessary placeholder"
   },
   "tracks": {
     "episodes": {

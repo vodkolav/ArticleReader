@@ -170,7 +170,10 @@ def permutations( grid):
         # print(prev)
         # print(this)
         tmp = [ t.copy() for t in this]
-        [th.update(prev) for th in tmp]
+        for th in tmp:
+            th = case_id(th,tmp)
+            th.update(prev)
+
         return tmp
 
     res = layers[0]
@@ -181,6 +184,19 @@ def permutations( grid):
         res = sum(res,[])
     return res
 
+cidp = "summary.case_id"
+
+def case_id(th, tmp ):
+    # case_id is the set of parameters and their values
+    # that uniquely identify this case 
+    # from all the other cases in the grid
+
+    if len(tmp)>1:
+        if cidp in th:
+            th[cidp].update(th.copy())
+        else:
+            th[cidp] = th.copy()
+    return th
 
 def get_path(pth, templ):
     val = jq.compile(f'.{pth}?').input(templ).first()
@@ -215,6 +231,7 @@ def span_grid(grid, templ):
     cases = []
     for caSe in permutations(grid):
         t = templ.copy()
+        caSe[cidp] = case_id_fmt(caSe[cidp])
         # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
             t = upd_path(k, t, v)
@@ -224,3 +241,10 @@ def span_grid(grid, templ):
 def brpt_anchr(var, val):
     if var == val:
         print("break me fully")
+
+
+def case_id_fmt(th):
+    res = ""
+    for k,v in th.items():
+        res+= str(k).split(".")[-1] + "." + str(v)
+    return res

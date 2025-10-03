@@ -26,6 +26,7 @@ class NumpyEncoder(json.JSONEncoder):
     
 class TelemetryManager:
     #TODO: rename to just Telemetry
+    #TODO: implement proper logging
     """
     Manages the collection of training and evaluation metrics.
     """
@@ -45,19 +46,22 @@ class TelemetryManager:
 
         self.log = []
 
-        # ["summary"] = {
-        #     "init_rss_mb": self.get_memory_usage_mb()
-        # }
+        self.summary = {}
+
 
         #TODO: define float format, ex: Avg Reward (last 100): {avg_reward:.2f}
 
-        self.tstp_format = "%Y%m%d-%H%M%S-%f"
+        #self.tstp_format = "%Y%m%d-%H%M%S-%f"
+        self.tstp_format = "%Y%m%d-%H%M%S"
+
         # self.env = experiment_config["env"]
 
         #self.algorithm = experiment_config["algorithm"]
         
         #self.strategy = experiment_config["strategy"]
-        self.last_sample = 0
+        # if we start counting samples from 0, then 
+        # the one before it is -1
+        self.last_sample = -1 
         self.tot_episodes = 0
 
         #limit = self.meta.get("telemetry_episodes_limit", 100)
@@ -169,6 +173,14 @@ class TelemetryManager:
         return disp.format(**entry)
 
 
+    def timestamp(self, entry = None):
+        if entry:
+            return datetime.fromtimestamp(entry)\
+                           .strftime(self.tstp_format) 
+        else:
+            return self.timestamp(self.now())
+        
+
     def report(self, what, newline = False) -> None:
         if newline:
             print(what)
@@ -185,10 +197,10 @@ class TelemetryManager:
         match self.sampling_type:
 
             case "interval_episodes":
-                self.last_sample = 0
+                self.last_sample = -1
 
             case "interval_sec":
-                self.last_sample = 0
+                self.last_sample = -1
 
             case "total_samples":
                 tot = self.total_episodes # 2342
@@ -205,11 +217,14 @@ class TelemetryManager:
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         self.case = new_case
-
+        self.summary = self.case["summary"]
         self.config_scheduling()
 
-        run_timestamp = datetime.now().strftime(self.tstp_format)
-        self.case["summary"]["start_time"] = run_timestamp
+        run_epoch = self.now()
+        self.summary["start_time"] = run_epoch
+        self.summary["timestamp"] = self.timestamp(run_epoch)
+
+        self.summary["init_rss_mb"] = self.sensors[""].get_memory_usage_mb()
 
 
     def collect_episodes(self):
@@ -225,24 +240,25 @@ class TelemetryManager:
         func = monitor.attach_to(func)
         self.sensors[label] = monitor
         return func
-
+        
 
     def collect_sensors(self):
         #print("combining tts_profiler results")
 
          for k,v in self.sensors.items():
-            summary = v.summarize_profile()
-            self.case = butils.upd_path(k+"tracks.resources", self.case ,summary)
+            mem_summary = v.summarize_profile()
+            self.case = butils.upd_path(k+"tracks.resources", self.case ,mem_summary)
 
 
     def end(self):
         # Optional: Print end message
-        end_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        self.case["summary"]["end_time"] = end_timestamp
+        end_timestamp = self.now()
+        self.summary["end_time"] = end_timestamp
         self.collect_sensors()
         self.collect_episodes()        
         # alg_name = self.algorithm["name"]
-        nm = self.case["summary"]["experiment_id"]
+        self.case["summary"] = self.summary
+        nm = self.summary["experiment_id"]
         self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
 

@@ -1,3 +1,7 @@
+import os
+# decrease log verbosity of speechbrain
+os.environ["SB_LOG_LEVEL"] = "50"
+
 from ArticleReader.Chunker import Chunker
 from ArticleReader.LatexToSpeech import LatexParser
 from ArticleReader.Narrator import Narrator
@@ -179,8 +183,6 @@ class TTSPipeline(Pipeline):
         
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
 
-        new_case["summary"]["experiment_id"] = tstp
-
         #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
         #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
         self.init_case(new_case)
@@ -219,19 +221,5 @@ class TTSPipeline(Pipeline):
         # TODO: isolate this into telemetry manager
         # create a report
         self.tele.print("creating report")
-        durations = data_converted.durations_sec
-        #durations_sec = (durations / sampling_freq).tolist()
-        perc_sile = 1- sum(durations)/(max(durations)*len(durations))
-
-        self.tele.print("writing results")
-        misc = {
-
-                # "time": tstp,
-                # "experiment_id": tstp,
-                "chunk_durations": list(durations),
-                "avg_percent_silence": perc_sile
-        }
-
-        self.tele.misc(misc)
         self.tele.end()
         #result.update(models_result)
