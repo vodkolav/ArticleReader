@@ -8,6 +8,7 @@ from ArticleReader.Narrator import Narrator
 
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import get_path, upd_path
+from Benchmarking.telemetry_manager import TelemetryManager
 
 import torch
 from speechbrain.inference import HIFIGAN, Tacotron2
@@ -26,18 +27,25 @@ class TTSPipeline(Pipeline):
         self.checkpoints_dir = checkpoints_dir
         # self.tele = None
         self.initializers = {
-                "data.test_data": self.init_preprocess,
-                "meta.device": self.init_device,
-                "model_tts.name": self.init_tts_model,
-                "model_voc.name": self.init_voc_model,
-                "meta.chunk_length": self.init_chunker,
-                "meta.batch_size": self.init_batch,
+                ".data.test_data": self.init_preprocess,
+                ".meta.device": self.init_device,
+                ".model_tts.name": self.init_tts_model,
+                ".model_voc.name": self.init_voc_model,
+                ".meta.chunk_length": self.init_chunker,
+                ".meta.batch_size": self.init_batch,
             }
         self.current_case = {}
         #self.first = True
 
+    def set_telemetry(self, telem: TelemetryManager):
+        level = ""
+        pth = level + ".tracks.resources"
+        self.tele = telem
+        self.run_case = self.tele.add_memory_monitor(self.run_case, {}, pth )
+
 
     def init_telemetry(self, new_case):
+        # re-runs for every new case
 
         # self.tele.__init__() #? 
         # TODO: implement addressing tracks of particular pipeline components 
@@ -57,6 +65,17 @@ class TTSPipeline(Pipeline):
                 # actually I don't need to attach this to different models, as the monitor just tracks
                 # the memory usage of the whole process.
         #     self.vocoder_model.decode_batch = self.tele.add_memory_monitor(self.vocoder_model.decode_batch, "model_voc")
+        level = ""
+
+        ssr = "episodes"
+        pth = level + ".tracks"
+        
+        tmp = get_path(pth, new_case)
+        if ssr in tmp:
+            conf = tmp[ssr]
+            lbl = f"{level}.tracks.{ssr}"
+            self.narrator.text_to_speech_df = self.tele.add_EpisodeTracker(
+                self.narrator.text_to_speech_df, self.narrator.batch_summary, conf, lbl)
 
         self.narrator.telemetry = self.tele
         self.chunker.telemetry = self.tele
@@ -86,7 +105,7 @@ class TTSPipeline(Pipeline):
 
         self.chunker = Chunker(max_len=chunk_length)
         self.chunker.split_text_into_chunks(self.preprocessed_text)
-
+        self.init_batch(new_case)
 
     def init_batch(self, new_case):
 
@@ -180,13 +199,8 @@ class TTSPipeline(Pipeline):
 
 
     def run_case(self, new_case):
-        
+
         tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-
-        #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
-        #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
-        self.init_case(new_case)
-
         case_file = os.path.join(self.output_dir, tstp)
 
         # save chunks as markdown for debugging
@@ -197,7 +211,8 @@ class TTSPipeline(Pipeline):
         self.chunker.sort_by_text_len()
 
         self.tele.print(" Running text_to_speech_df")
-        data_converted = self.narrator.text_to_speech_df_batched(self.chunker.feed_df_batches())
+        data_converted = self.narrator.text_to_speech_df_batched(
+            self.chunker.feed_df_batches())
         self.tele.print(" Done Running text_to_speech_df")
 
         # restore order of sentences
@@ -212,14 +227,25 @@ class TTSPipeline(Pipeline):
         self.narrator.save_audio(case_file + ".wav", waveform)
         self.tele.print("done saving sound")
 
-        self.close_case(new_case, data_converted)
-        
-        return self.tele.results()
 
-
-    def close_case(self, new_case, data_converted):
-        # TODO: isolate this into telemetry manager
+    def close_case(self, new_case):
         # create a report
         self.tele.print("creating report")
         self.tele.end()
         #result.update(models_result)
+
+
+    def execute(self, new_case):
+        try:
+            #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
+            #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
+
+            self.init_case(new_case)
+            self.run_case(new_case)
+            self.close_case(new_case)
+
+        except Exception as e:
+            print('what')
+            return "Error"
+
+        return "Ok"

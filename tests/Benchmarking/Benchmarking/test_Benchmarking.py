@@ -15,24 +15,24 @@ print(bench.donecases)
 
 bench.configure(ttsppl)
 
-onegrid = {  "meta.chunk_length": [75],
-             "meta.batch_size": [2],
+onegrid = {  ".meta.chunk_length": [75],
+             ".meta.batch_size": [2],
             # "meta.limit": [20,30], probably will try to grid-expand it 
-             "model_tts.name": ["tts-tacotron2-ljspeech"],
-             "model_voc.name": ["tts-hifigan-ljspeech"],
-             "meta.device": ["CPU"], 
-             "data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+             ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_voc.name": ["tts-hifigan-ljspeech"],
+             ".meta.device": ["CPU"], 
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
        }
 print(onegrid)
 
-# smallgrid = {"meta.chunk_length": [75,100],
-#              "meta.batch_size": (2, 3),
-#              "model_tts.name": ["tts-tacotron2-ljspeech"],
-#              "model_voc.name": ["tts-hifigan-ljspeech"],
-#              "meta.device": ["CPU"], 
-#              "data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
-#        }
-# smallgrid
+smallgrid = {".meta.chunk_length": [75,100],
+             ".meta.batch_size": (2, 3),
+             ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_voc.name": ["tts-hifigan-ljspeech"],
+             ".meta.device": ["CPU"], 
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+       }
+smallgrid
 
 bench.unfurl_grid(case_template, onegrid)
 

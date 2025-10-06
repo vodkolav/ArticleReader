@@ -84,7 +84,8 @@ class Narrator:
         return mel_lengths
         # [min(mml,ml + p) for ml,p in zip(mel_lengths, pause)]
 
-    def text_to_speech_df(self, batch_df: pd.DataFrame):# (self, batch_df: pd.DataFrame):
+    def text_to_speech_df(self, i_batch, batch_df: pd.DataFrame):# (self, batch_df: pd.DataFrame):
+        # i_batch is not needed in this case, but is required for episode tracking
 
         # ensure sentences are sorted by seq_len
         batch_df.loc[:,"seq_len"] = batch_df.sentence.map(self.seq_len)
@@ -128,11 +129,11 @@ class Narrator:
 
         for i_btch, btch in enumerate(batchIterator):
             # TODO: add measurement of runtime of a batch
-            # probably should be some decorator that attaches to text_to_speech_df
-            btch = self.text_to_speech_df(btch)
+            # DONE. but it adds i_btch to method signature.
+            # TODO: check if it can be avoided
+            btch = self.text_to_speech_df(i_btch, btch)
             done_dfs.append(btch)
             
-            self.tele.record_episode(i_btch, self.batch_summary(i_btch, btch))
             
         done_dfs = pd.concat(done_dfs)
         return done_dfs

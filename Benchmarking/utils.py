@@ -184,12 +184,14 @@ def permutations( grid):
         res = sum(res,[])
     return res
 
-cidp = "summary.case_id"
+cidp = ".summary.case_id"
 
 def case_id(th, tmp ):
     # case_id is the set of parameters and their values
     # that uniquely identify this case 
     # from all the other cases in the grid
+
+    th[cidp] = {"single":"case"}
 
     if len(tmp)>1:
         if cidp in th:
@@ -199,7 +201,7 @@ def case_id(th, tmp ):
     return th
 
 def get_path(pth, templ):
-    val = jq.compile(f'.{pth}?').input(templ).first()
+    val = jq.compile(f'{pth}?').input(templ).first()
     if val:
         return val
     else:
@@ -216,9 +218,9 @@ def qua(val):
 
 
 def upd_path(pth, templ, val):
-    if jq.compile(f'.{pth}?').input(templ).first():
+    if jq.compile(f'{pth}?').input(templ).first():
         val = qua(val)
-        jqquery = f'.{pth} = {val}'
+        jqquery = f'{pth} = {val}'
         templ = jq.compile(jqquery).input(templ).first() 
         #print(f"set {k} to {o}")
         return templ

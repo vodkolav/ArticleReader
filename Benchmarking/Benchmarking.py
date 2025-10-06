@@ -77,8 +77,6 @@ class Bench:
         return experiment_configs
 
 
-
-
     def run_experiments(self, force = False):
         # sequentially
         experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
@@ -91,8 +89,14 @@ class Bench:
 
         for i, config in enumerate(self.TODOcases):
             config['summary']["experiment_id"] = experiment_id
-            experiment_run = self.pipeline.run_case(config)
+            status = self.pipeline.execute(config)
+            if status != "Ok":
+                print("fatal error in run_case. aborting")
+                return
+                # TODO: make it graceful
+
             print("saving benchmark data")
+            experiment_run =self.pipeline.tele.results()
             case_id = experiment_run['summary']["case_id"]
             tstp    = experiment_run['summary']["timestamp"]
             

@@ -14,7 +14,7 @@ class MemoryMonitor:
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
 
-    def __init__(self, interval_sec: float = 0.1): #, stage, model_id):
+    def __init__(self, interval_sec: float = 0.1, **kwargs): #, stage, model_id):
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
@@ -145,7 +145,7 @@ class MemoryMonitor:
         return wrapper
 
 
-    def summarize_profile(self):
+    def summarize(self):
 
         if len(self.memory_log)>1:
             # data = pd.DataFrame(self.memory_log)

@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 import time
 
+from Benchmarking.EpisodeTracker import EpisodeTracker
 from Benchmarking.MemoryMonitor import MemoryMonitor
 import Benchmarking.utils as butils
 import os
@@ -39,8 +40,6 @@ class TelemetryManager:
         # run on separate threads
         # not in sync with telemetry episodes/epochs
         self.sensors = {}
-
-        self.episodes = []
 
         self.case = {}
 
@@ -95,14 +94,6 @@ class TelemetryManager:
         return "Training" if self._current_episode["is_training"] else "Evaluating"
 
 
-    @property
-    def sampling_type(self):
-        return self.case["tracks"]["episodes"]["sampling_type"]
-
-
-    @property
-    def sampling_value(self):
-        return self.case["tracks"]["episodes"]["sampling_value"]
 
     # def reset_episode(self, i_episode):
     #     """Resets metrics for a new episode."""
@@ -122,32 +113,6 @@ class TelemetryManager:
 
         #self._current_episode["info"].append(info if info is not None else {})
         # You can record other step-specific info if needed from the 'info' dict
-
-    def record_episode(self, i_episode, data):
-        # TODO add version that accepts data as callable - the tracked 
-        # object's function that collects the data. to skip unnecessary data collection
-
-        # in RL: episode, in ML/DL: epoch 
-        # in TTS: batch (TODO: or maybe better make it step?)
-        """Records metrics at the end of an episode."""
-        
-        match self.sampling_type:
-
-            case "interval_episodes":
-                if i_episode >= self.last_sample + self.sampling_value:
-                    self.episodes.append(deepcopy(data))
-                    self.last_sample = i_episode
-
-            case "interval_sec":
-                timE = time.time()
-                if timE >= self.last_sample + self.sampling_value:
-                    self.episodes.append(deepcopy(data))
-                    self.last_sample = timE
-
-            case "total_samples":
-                # total_samples
-                if i_episode in self.samplePoints:
-                    self.episodes.append(deepcopy(data))
 
 
     def now(self):
@@ -179,7 +144,7 @@ class TelemetryManager:
                            .strftime(self.tstp_format) 
         else:
             return self.timestamp(self.now())
-        
+
 
     def report(self, what, newline = False) -> None:
         if newline:
@@ -187,67 +152,53 @@ class TelemetryManager:
         else:
             print(f"\r{what}" , end='')
 
+
     def misc(self, data):
         self.case['misc'] = data
 
-    def config_scheduling(self):
-        # sampling_type:  interval_sec, interval_episodes, total_samples
-        # sampling_value:          0.1,                 4,           100
-
-        match self.sampling_type:
-
-            case "interval_episodes":
-                self.last_sample = -1
-
-            case "interval_sec":
-                self.last_sample = -1
-
-            case "total_samples":
-                tot = self.total_episodes # 2342
-                value = self.sampling_value # total_samples = 100
-
-                if  tot < value:
-                    value = tot
-                
-                self.samplePoints = np.int64(np.linspace(0, tot, num = value ))
-                invl = np.round(value/tot, decimals=2)
-                print("tracking and reporting once every", invl, "episodes")
 
 
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         self.case = new_case
         self.summary = self.case["summary"]
-        self.config_scheduling()
+        #self.config_scheduling()
 
         run_epoch = self.now()
         self.summary["start_time"] = run_epoch
         self.summary["timestamp"] = self.timestamp(run_epoch)
 
-        self.summary["init_rss_mb"] = self.sensors[""].get_memory_usage_mb()
+        self.summary["init_rss_mb"] = self.sensors[".tracks.resources"].get_memory_usage_mb()
 
 
-    def collect_episodes(self):
-        self.case["tracks"]["episodes"]["data"] = self.episodes
+    # def collect_episodes(self):
+    #     self.case["tracks"]["episodes"]["data"] = self.episodes
 
 
     def collect_log(self):
         self.case["tracks"]["log"]["data"] = self.log
 
 
-    def add_memory_monitor(self, func, label):
-        monitor = MemoryMonitor()
+    def add_memory_monitor(self, func, config: dict, label):
+        monitor = MemoryMonitor(**config)
         func = monitor.attach_to(func)
         self.sensors[label] = monitor
         return func
-        
+
+
+    def add_EpisodeTracker(self, ep_func, summ_func, config: dict, label):
+        trckr = EpisodeTracker(**config)
+        ep_func = trckr.attach_to(ep_func, summ_func)
+        self.sensors[label] = trckr
+        return ep_func
+
 
     def collect_sensors(self):
         #print("combining tts_profiler results")
 
          for k,v in self.sensors.items():
-            mem_summary = v.summarize_profile()
-            self.case = butils.upd_path(k+"tracks.resources", self.case ,mem_summary)
+            mem_summary = v.summarize()
+            self.case = butils.upd_path(k, self.case ,mem_summary)
 
 
     def end(self):
@@ -255,12 +206,13 @@ class TelemetryManager:
         end_timestamp = self.now()
         self.summary["end_time"] = end_timestamp
         self.collect_sensors()
-        self.collect_episodes()        
+        #self.collect_episodes()        
         # alg_name = self.algorithm["name"]
         self.case["summary"] = self.summary
-        nm = self.summary["experiment_id"]
-        self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
+        #nm = self.summary["experiment_id"]
+        #self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
+
 
     def results(self):
         return self.case

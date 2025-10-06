@@ -10,6 +10,3 @@ class Pipeline:
     def run_case(self, new_case):
         pass
 
-    def set_telemetry(self, telem: TelemetryManager):
-        self.tele = telem
-        self.run_case = self.tele.add_memory_monitor(self.run_case, "" )
