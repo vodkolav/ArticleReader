@@ -105,7 +105,7 @@ class TTSPipeline(Pipeline):
 
         self.chunker = Chunker(max_len=chunk_length)
         self.chunker.split_text_into_chunks(self.preprocessed_text)
-        self.init_batch(new_case)
+
 
     def init_batch(self, new_case):
 
@@ -114,10 +114,9 @@ class TTSPipeline(Pipeline):
         if lim:
             a, b = lim
             self.tele.print(f"limited to chunks {a} to {b}")
-            self.chunker.limit = slice(a,b)
+            self.chunker.limit = lim
 
-        self.chunker.init_df()
-        
+
         self.narrator = Narrator(self.tts_model, self.vocoder_model)
                 
         # TODO implement: 

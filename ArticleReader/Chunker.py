@@ -29,7 +29,7 @@ class Chunker:
     def __init__(self, max_len=100):
         self.max_len = max_len
         self._batch_size = 1 # default
-        self.limit = slice(None)
+        self.limit = None
 
     def breakByWords(self, text):
         ss = re.split(r"[ \n]+", text)
@@ -149,6 +149,7 @@ class Chunker:
         # print(text)
 
         self.chunks = self.breakByParagraphs(text)
+        self.chunks_df = self.as_pandas()
         
         # self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
         # self.chunks["text_len"] = self.chunks.sentence.str.len()
@@ -165,14 +166,21 @@ class Chunker:
 
 
     def feed_df_batches(self, ):
-        l = len(self.chunks_df)
-        n = self.batch_size
-        self.tele.total_episodes = int(np.ceil(l/n))
-        for ndx in range(0, l, n):
+        if self.limit:
+            a,b = self.limit
+            
+        else:
+            a = 0
+            b = len(self.chunks_df)
 
-            fr, to = ndx , min(ndx + n, l)
-            i = int(ndx/n)
-            msg = f"feeding chunks {fr} to {to} out of {l}"
+        n = self.batch_size
+        l = b-a
+        self.tele.total_episodes = int(np.ceil(l/n))
+
+        for ndx in range(a, b, n):
+
+            fr, to = ndx , min(ndx + n, b)
+            msg = f"feeding {n} chunks: {fr} to {to} from range [{a},{b}] (total {l} chunks)"
             self.tele.print(msg) # TODO: report something more useful
 
             yield self.chunks_df.iloc[fr : to].copy()
@@ -185,9 +193,7 @@ class Chunker:
         chunks["text_len"] = chunks.sentence.str.len()
         return chunks
 
-    def init_df(self):
-        self.chunks_df = self.as_pandas()[self.limit]
-        
+
     def get_chunks_sorted(self, n_chunks = 3, start=0):
         df = self.as_pandas().sort_values("text_len", ascending=False)        
         return df.iloc[start : start +n_chunks]
