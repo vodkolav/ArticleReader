@@ -97,10 +97,14 @@ class Bench:
 
             print("saving benchmark data")
             experiment_run =self.pipeline.tele.results()
-            case_id = experiment_run['summary']["case_id"]
+            case_sign = experiment_run['summary']["case_signature"]
             tstp    = experiment_run['summary']["timestamp"]
+
+            case_id = tstp +"."+ case_sign
+
+            experiment_run['summary']["case_id"] = case_id
             
-            dest = os.path.join(self.run_dir , tstp +"."+ case_id + ".json")
+            dest = os.path.join(self.run_dir , case_id + ".json")
 
             with open(dest, "w+") as f:
                 # TODO: json delamination

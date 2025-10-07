@@ -158,3 +158,26 @@ except ValueError as e:
 #     recombine(no_common_coarse, no_common_fine)
 # except ValueError as e:
 #     print(f"Caught expected error: {e}")
+
+from Benchmarking.utils import permutations
+
+def test_permutations():
+
+    grid = {"A": [1,2,3,4,5,6],
+            "B": "a b c d e f g h i j".split(' '),
+            "C": ["U", "V"],
+            "D": ["J","K"],
+            "E": ["P"], 
+            }
+    res = permutations(grid)
+    
+    import json
+    with open("check.json", 'w+') as f: 
+        json.dump(res, f, indent=4)
+
+
+    import pandas as pd 
+    df = pd.read_json("check.json")
+    print(df)
+
+    print(len(df.drop_duplicates())) 

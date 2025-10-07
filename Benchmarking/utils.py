@@ -138,27 +138,6 @@ def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path_specs
     return combined
 
 
-def test_permutations():
-
-    grid = {"A": [1,2,3,4,5,6],
-            "B": "a b c d e f g h i j".split(' '),
-            "C": ["U", "V"],
-            "D": ["J","K"],
-            "E": ["P"], 
-            }
-    res = permutations(grid)
-    
-    import json
-    with open("check.json", 'w+') as f: 
-        json.dump(res, f, indent=4)
-
-
-    import pandas as pd 
-    df = pd.read_json("check.json")
-    print(df)
-
-    print(len(df.drop_duplicates())) 
-
 def permutations( grid):
 
     keys = list(grid.keys())
@@ -166,39 +145,17 @@ def permutations( grid):
 
     layers = [[{keys[l]:v} for v in grid[keys[l]]]  for l in range(n)]
 
-    def combine(prev, this):
-        # print(prev)
-        # print(this)
-        tmp = [ t.copy() for t in this]
-        for th in tmp:
-            th = case_id(th,tmp)
-            th.update(prev)
+    signatures = [{None}]
 
-        return tmp
-
-    res = layers[0]
-    for i in range(1,n):
+    res = [None]
+    for i in range(0,n):
         l1 = res
         l2 = layers[i]
-        res = [combine(l, l2) for l in l1]
-        res = sum(res,[])
-    return res
+        res, signatures = mg(l1, l2, signatures)
+    return res, signatures
 
-cidp = ".summary.case_id"
+cidp = ".summary.case_signature"
 
-def case_id(th, tmp ):
-    # case_id is the set of parameters and their values
-    # that uniquely identify this case 
-    # from all the other cases in the grid
-
-    th[cidp] = {"single":"case"}
-
-    if len(tmp)>1:
-        if cidp in th:
-            th[cidp].update(th.copy())
-        else:
-            th[cidp] = th.copy()
-    return th
 
 def get_path(pth, templ):
     val = jq.compile(f'{pth}?').input(templ).first()
@@ -230,23 +187,50 @@ def upd_path(pth, templ, val):
     
 
 def span_grid(grid, templ):
+    # signature is the set of parameters 
+    # and their values that uniquely identify this 
+    # case from all the other cases in the grid
+
     cases = []
-    for caSe in permutations(grid):
+    cells, signatures = permutations(grid)
+
+    for caSe, siGn in zip(cells, signatures):
         t = templ.copy()
-        caSe[cidp] = case_id_fmt(caSe[cidp])
+        caSe[cidp] = signature_fmt(siGn)
         # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
             t = upd_path(k, t, v)
         cases.append(t) 
     return cases
 
+
 def brpt_anchr(var, val):
     if var == val:
         print("break me fully")
 
 
-def case_id_fmt(th):
-    res = ""
-    for k,v in th.items():
-        res+= str(k).split(".")[-1] + "." + str(v)
+def signature_fmt(sig):
+    if sig == {None}:
+        return "single.case"
+    res= [str(k).split(".")[-1] + "=" + str(v) for k,v in sig.items()]
+    res = ".".join(res)
     return res
+
+
+def mgn(x,y):
+    # merge with none
+    if x is None:
+        if y is None:
+            return None
+        else:
+            return y
+    elif y is None:
+        return x
+    else:   
+        return {**x, **y}
+
+def mg(A,B, sign):
+    res = [mgn(x, y) for x in A for y in B]
+    if len(B) >1 :
+        sign = [mgn(x, y) for x in sign for y in B]
+    return res, sign
