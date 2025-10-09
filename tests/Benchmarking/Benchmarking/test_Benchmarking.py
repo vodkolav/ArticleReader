@@ -6,12 +6,10 @@ ttsppl = TTSPipeline()
 
 case_template = ttsppl.case_template()
 
-#case_template
+bench = Bench(folder="20251009-1501") # open existing folder
 
-bench = Bench()
+#bench = Bench() # create new folder
 
-
-print(bench.donecases)
 
 bench.configure(ttsppl)
 
@@ -23,7 +21,14 @@ onegrid = {  ".meta.chunk_length": [75],
              ".meta.device": ["CPU"], 
              ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
        }
-print(onegrid)
+
+twogrid = {  ".meta.chunk_length": [75],
+             ".meta.batch_size": [2,3],
+             ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_voc.name": ["tts-hifigan-ljspeech"],
+             ".meta.device": ["CPU"], 
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+       }
 
 smallgrid = {".meta.chunk_length": [75,100],
              ".meta.batch_size": (2, 3),
@@ -34,7 +39,14 @@ smallgrid = {".meta.chunk_length": [75,100],
        }
 smallgrid
 
-bench.unfurl_grid(case_template, onegrid)
+pathspec = [".tracks.episodes.data", 
+            ".tracks.episodes.run_time_sec",
+            ".tracks.episodes.exceptions",
+            ".tracks.resources.data", 
+            ".tracks.log.data"] 
+
+chosengrid = onegrid
+bench.unfurl_grid(case_template, chosengrid, pathspec)
 
 print("len(bench.TODOcases):", len(bench.TODOcases))
 

@@ -5,15 +5,32 @@ import json
 from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
-from Benchmarking.utils import span_grid
+from Benchmarking.utils import span_grid, delaminate, recombine
 from Benchmarking.telemetry_manager import TelemetryManager
 
 class Bench:
 
-    def __init__(self, benchmarks_root = "benchmark", patt = "*.json"):
+    def __init__(self, benchmarks_root = "benchmark", folder = None):
+
+        if folder:
+            self.experiment_id = folder
+        else:
+            self.experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
+        
+        self.folder = os.path.join(benchmarks_root, self.experiment_id)
+        # Ensure results directory exists
+        os.makedirs(self.folder, exist_ok=True)
+
         self.benchmarks_root = benchmarks_root
-        self.donecases = self.load_benchmarks(patt)
-        self.force = False
+
+        patt = "*.json"
+
+        self.donecases = self.load_benchmarks(patt) 
+       
+        self.pathspec = [".tracks.episodes.data", 
+            ".tracks.resources.data", 
+            ".tracks.log.data"] 
+
 
     def configure(self, pipeline: Pipeline):
         
@@ -23,7 +40,21 @@ class Bench:
         # get template case from pipeline
 
 
-    def unfurl_grid(self, case_template, grid):
+    def check_grid(self, grid):
+        existing = os.path.join(self.folder, "grid.json")
+        if os.path.exists(existing):
+            exgrid = self.read_config(existing)
+            if exgrid != grid:
+                print("Warning: existing grid differs from new grid.")
+                print("Existing grid:")
+                print(exgrid)
+                print("New grid:")
+                print(grid)
+        else:
+            self.write_config(grid, filename = "grid", sort_keys=False)
+
+
+    def unfurl_grid(self, case_template, grid, pathspec):
         # span grid to experiment_configs atop template case
         """
         grid = {'meta.chunk_length': [75, 100],
@@ -33,7 +64,8 @@ class Bench:
                 'meta.device': ['CPU']
             }
         """
-
+        self.check_grid(grid)
+        self.pathspec = pathspec
         self.TODOcases = span_grid(grid, case_template)
 
         # TODO: check if some cases already done 
@@ -44,6 +76,7 @@ class Bench:
         #     # if case in donecases and not force: skip and log
         #     print("data for case already exists:\n", self.case)
 
+        #TODO: allow to add multiple grids for "or" combinations
 
     def load_benchmarks(self, patt = "*"):
         paths = Path(self.benchmarks_root).glob(patt +".json")
@@ -51,7 +84,6 @@ class Bench:
         if experiments:
             experiments = pd.concat(experiments)
         return experiments
-        #bnch_data[["device", "tts_model", "vocoder_model", "chunk_length", "batch_size"]].copy()
 
 
     def summary(Cases):
@@ -77,18 +109,26 @@ class Bench:
         return experiment_configs
 
 
+    def write_config(self, caSe, filename, sort_keys = False):
+        config_filepath = os.path.join(self.folder , f"{filename}.json")
+        """Writes experiment configurations to a JSON file"""
+        try:
+            with open(config_filepath, 'w+') as f:
+                json.dump(caSe, f, indent=2, sort_keys=sort_keys)
+        except FileNotFoundError:
+            print(f"Error: Configuration file not found at {config_filepath}")
+            return
+        except json.JSONDecodeError:
+            print(f"Error: Invalid JSON in {config_filepath}")
+            return
+
+
     def run_experiments(self, force = False):
         # sequentially
-        experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
-        self.run_dir = os.path.join(self.benchmarks_root, experiment_id)
-        
-        # Ensure results directory exists
-        os.makedirs(self.run_dir, exist_ok=True)
-
         # init the pipeline
 
         for i, config in enumerate(self.TODOcases):
-            config['summary']["experiment_id"] = experiment_id
+            config['summary']["experiment_id"] = self.experiment_id
             status = self.pipeline.execute(config)
             if status != "Ok":
                 print("fatal error in run_case. aborting")
@@ -101,14 +141,22 @@ class Bench:
             tstp    = experiment_run['summary']["timestamp"]
 
             case_id = tstp +"."+ case_sign
-
             experiment_run['summary']["case_id"] = case_id
-            
-            dest = os.path.join(self.run_dir , case_id + ".json")
 
-            with open(dest, "w+") as f:
-                # TODO: json delamination
-                json.dump(experiment_run,f, indent=2)
+            coarse_data, fine_data = delaminate(experiment_run, self.pathspec)
+            self.write_config(coarse_data, f"{case_id}.coarse")
+            self.write_config(fine_data, f"{case_id}.fine")
+
+            self.test_recombination(experiment_run, coarse_data, fine_data, case_id)
+
+
+    def test_recombination(self, original, coarse_data, fine_data, case_id):
+
+        recombined = recombine(coarse_data, fine_data, self.pathspec)
+        assert recombined == original
+
+        self.write_config(original, f"{case_id}.original", sort_keys = True)
+        self.write_config(recombined, f"{case_id}.recombined", sort_keys= True)
 
 
     def run_experiments_parallel(self, experiment_configs: list, num_cores: int = None ):
@@ -173,6 +221,7 @@ class Bench:
 
 
     def load_results(results_dir, patt = "*"):
+        #TODO: check if thats a redundant function
         pth = Path(results_dir)
         
         paths = list(pth.glob(patt +".json"))

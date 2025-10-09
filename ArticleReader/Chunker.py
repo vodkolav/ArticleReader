@@ -181,7 +181,7 @@ class Chunker:
 
             fr, to = ndx , min(ndx + n, b)
             msg = f"feeding {n} chunks: {fr} to {to} from range [{a},{b}] (total {l} chunks)"
-            self.tele.print(msg) # TODO: report something more useful
+            self.tele.print(msg)
 
             yield self.chunks_df.iloc[fr : to].copy()
 

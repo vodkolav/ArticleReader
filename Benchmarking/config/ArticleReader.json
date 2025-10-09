@@ -17,33 +17,8 @@
     "class": "Tacotron2",
     "provider": "speechbrain",
     "stage": "tts",
-    "params": {
-      "alpha": 0.1,
-      "lambda": 0.3,
-      "gamma": 0.9
-    },
     "overrides": {
       "max_decoder_steps": 2000
-    },
-    "tracks": {
-      "resources": {
-        "sampling_type": "interval_sec",
-        "sampling_value": 0.1,
-        "start": 1740272567.8687654,
-        "data": [
-          {
-            "i": 3826,
-            "time": 1758985756.80367,
-            "rss_mb": 4602.8671875,
-            "size_bytes": 113936,
-            "vms_mb": 15286988800,
-            "processes": 1,
-            "num_threads": 76,
-            "per_process_limit": 26281478400,
-            "free_memory": 21822556000
-          }
-        ]
-      }
     }
   },
   "model_voc": {
@@ -51,77 +26,32 @@
     "class": "HIFIGAN",
     "provider": "speechbrain",
     "stage": "vocoder",
-    "params": {
-      "alpha": 0.1,
-      "lambda": 0.3,
-      "gamma": 0.9
-    },
     "overrides": {
       "max_decoder_steps": 2000
-    },
-    "tracks": {
-      "resources": {
-        "sampling_type": "interval_sec",
-        "sampling_value": 0.1,
-        "start": 1740272567.8687654,
-        "data": [
-          {
-            "i": 3826,
-            "time": 1758985756.80367,
-            "rss_mb": 4602.8671875,
-            "size_bytes": 113936,
-            "vms_mb": 15286988800,
-            "processes": 1,
-            "num_threads": 76,
-            "per_process_limit": 26281478400,
-            "free_memory": 21822556000
-          }
-        ]
-      }
     }
   },
   "summary": {
-    "timestamp": "25.02.23-03.02.47",
-    "max_memory_use": 3931697152,
-    "run_time_sec": 196.09138,
-    "avg_percent_silence": 0.2063680000000001,
+    "timestamp": "00.00.00-00.00.42",
+    "max_memory_use": 0,
+    "run_time_sec": 0,
+    "avg_percent_silence": 0,
     "exceptions": null,
     "n_threads": null,
-    "experiment_id": "25.02.23-03.02.47",
+    "experiment_id": "",
     "case_signature": "necessary placeholder"
   },
   "tracks": {
     "episodes": {
       "sampling_type": "interval_episodes",
-      "sampling_value": 1,
-      "data": [
-        {
-          "i": 3826,
-          "rss_mb": 4602.8671875,
-          "size_bytes": 113936,
-          "vms_mb": 15286988800,
-          "processes": 1,
-          "num_threads": 76,
-          "per_process_limit": 26281478400,
-          "free_memory": 21822556000
-        }
-      ]
+      "sampling_value": 1
     },
     "log": {
       "sampling_type": "on_demand",
-      "sampling_value": null,
-      "data": [
-        {
-          "time": 434234234,
-          "message": "yes we log!",
-          "type": "info"
-        }
-      ]
+      "sampling_value": null      
     },
     "resources": {
       "sampling_type": "interval_sec",
-      "sampling_value": 0.1,
-      "data": ["blabla"]
+      "sampling_value": 0.1
     }
   }
 }
