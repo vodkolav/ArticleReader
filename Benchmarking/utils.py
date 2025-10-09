@@ -27,6 +27,8 @@ def deep_dict(d, k):
     return d
 
 def classify(node, chld):
+    if node == "":
+        return '', None, "root"
     if "[" in node:
         sp = node.split('[')
         field = sp[0]
@@ -49,15 +51,19 @@ def build_fine_query(doop, t="    ", pref = ""):
                 key = f"{key}: .{key}"
                 arg = build_fine_query(v, t+t)
                 mem = f'(\n{t}{pref}.{field} // [] | map({{\n{t}{key},\n{t} {arg}\n{t}}})\n{t})'
-                mem = f"{field}: {mem}"
+                mem = f"{t}{field}: {mem}"
 
             case "leaf":
-                mem = f"{field}: {pref}.{field}"
+                mem = f"{t}{field}: {pref}.{field}"
 
             case "dict":
                 arg = build_fine_query(v, t+t, f"{pref}.{field}")
-                mem = f'{{\n{t}{arg}\n{t}}}'
+                mem = f'{{\n{t+t}{arg}\n{t}}}'
                 mem = f"{t}{field}: {mem}"
+
+            case 'root':
+                arg = build_fine_query(v, t, f"{pref}")
+                mem = f'{{\n{arg}\n}}'
 
         res.append(mem)
     res = ",\n".join(res)
@@ -69,9 +75,9 @@ def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]])
     
     deep = {}
     for p in path_specs:
-        k = p.split('.')[1:]
+        k = p.split('.')
         #print(p)
-        deep = deep_dict(deep, k)    
+        deep = deep_dict(deep, k)
 
     root = list(deep.keys())[0]
     fix = root.split('[')[0]

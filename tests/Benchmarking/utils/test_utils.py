@@ -118,29 +118,26 @@ from Benchmarking.utils import deep_dict
 
 deep = {}
 for p in pathspec:
-    k = p.split('.')[1:]
+    k = p.split('.')
     #print(p)
     deep = deep_dict(deep, k)  
 
 fine_query = build_fine_query(deep)
 
-fine_query = f"{{\n{fine_query}\n}}" # temporary fix for outer {}
-
 with open(wd+"q_fine.jq", 'w') as f:
     f.write(fine_query)
 
-target_fine_query = """
-{
+target_fine_query = """{
   BackupCfg: (
     .BackupCfg // [] | map({
       Id: .Id,
       cfg: (
         .cfg // [] | map({
-            ID: .ID,
-            Paths: .Paths
+          ID: .ID,
+          Paths: .Paths
         })
         ),
-        progress: {
+      progress: {
         wins: .progress.wins
       },
       port: .port
@@ -151,14 +148,13 @@ target_fine_query = """
       data: .AnotherCfg.switches.data
     },
     points: (
-        .AnotherCfg.points // [] | map({
-      i: .i,
-      x: .x
+      .AnotherCfg.points // [] | map({
+        i: .i,
+        x: .x
     })
     )
   }
-}
-"""
+}"""
 
 with open(wd+"q_tgt.jq", 'w') as f:
     f.write(target_fine_query)
