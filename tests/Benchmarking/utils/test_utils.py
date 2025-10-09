@@ -1,6 +1,6 @@
 #deep = {}
 
-from utils import build_fine_query, delaminate, recombine
+from Benchmarking.utils import build_fine_query, delaminate, recombine
 import json
 
 # simple example
@@ -17,9 +17,12 @@ import json
 # deep = deep_dict(deep, [1,2,7,8])
 # deep
 
-paths = [".BackupCfg[Id].cfg[ID].Paths", 
-         ".BackupCfg[Id].progress[id].wins", 
-         ".BackupCfg[Id].port"] 
+pathspec = [".BackupCfg[Id].cfg[ID].Paths", 
+            ".BackupCfg[Id].progress.wins", 
+            ".BackupCfg[Id].port",
+            ".AnotherCfg.switches.data",
+            ".AnotherCfg.points[i].x"] 
+
 
 original_json_data = {
     "BackupCfg": [
@@ -29,15 +32,16 @@ original_json_data = {
         "repository": "hurr",
         "url": "test.example.com",
         "port": "394",
-        # "progress":[
+        # this is for testing for absence. 
+        # the result should have "progress":{"wins":[]} here
+        # "progress":
         # {
         #     "id":5, 
         #     "name":"test", 
         #     "status":"ok", 
-        #     # "wins":[100,200,300,400],            
+        #     # "wins":[100,200,300,400],
         #     }
-
-        # ],
+        # ,
         "cfg": [
         {
             "Default": "true",
@@ -70,44 +74,118 @@ original_json_data = {
             "Cron": "*/30 0-23 * * *"
         }
         ],
-        "progress":[
-        {
-            "id":1, 
+        "progress":
+            {
             "name":"test", 
             "status":"ok", 
             "wins":[100,200,300,400],            
             }
 
-        ]
     }
-    ]
+    ],
+    "AnotherCfg": {
+        "version": "1.0",
+        "description": "just a test",
+        "points": [
+            {
+                "i": 0,
+                "x": 1,
+            }
+        ],
+        "switches": {
+            "data": [1,2,3,4,5]
+        }
+    }
 }
 
-wd = 'test/'
+wd = 'tests/Benchmarking/utils/' # working directory
 
 def dump(data, filename='data'):
     with open(wd + filename + ".json", 'w') as f:
         json.dump(data, f, indent=2, sort_keys=True)
 
+def load( filename='data'):
+    with open(wd + filename + ".json", 'r') as f:
+        return json.load(f)
+
 
 print("--- Original JSON Data ---")
-dump(original_json_data, 'original')  
+dump(original_json_data, 'original')
 
-# --- Separation ---
+# test dynamic generation of fine query part
+import jq 
+from Benchmarking.utils import deep_dict
 
-coarse_data, fine_data = delaminate(original_json_data, paths)
+deep = {}
+for p in pathspec:
+    k = p.split('.')[1:]
+    #print(p)
+    deep = deep_dict(deep, k)  
+
+fine_query = build_fine_query(deep)
+
+fine_query = f"{{\n{fine_query}\n}}" # temporary fix for outer {}
+
+with open(wd+"q_fine.jq", 'w') as f:
+    f.write(fine_query)
+
+target_fine_query = """
+{
+  BackupCfg: (
+    .BackupCfg // [] | map({
+      Id: .Id,
+      cfg: (
+        .cfg // [] | map({
+            ID: .ID,
+            Paths: .Paths
+        })
+        ),
+        progress: {
+        wins: .progress.wins
+      },
+      port: .port
+    })
+  ),
+  AnotherCfg: {
+    switches: {
+      data: .AnotherCfg.switches.data
+    },
+    points: (
+        .AnotherCfg.points // [] | map({
+      i: .i,
+      x: .x
+    })
+    )
+  }
+}
+"""
+
+with open(wd+"q_tgt.jq", 'w') as f:
+    f.write(target_fine_query)
+
+# bash:
+# code --diff q_fine.jq q_tgt.jq 
+
+# test if result of generated query matches target
+fine_data = jq.compile(fine_query).input(original_json_data).first() 
+
+
+# --- Test full delamination run ---
+
+coarse_data, fine_data = delaminate(original_json_data, pathspec)
+
 dump(fine_data, 'fine')
 dump(coarse_data, 'coarse')
 
 
 # bash:
-# code --diff test/original.json test/fine.json 
-# code --diff test/original.json test/coarse.json 
+# code --diff original.json test/fine.json 
+# code --diff original.json test/coarse.json 
 
 
 # --- Recombination 
 try:
-    recombined_output = recombine(coarse_data, fine_data, paths)
+    recombined_output = recombine(coarse_data, fine_data, pathspec)
     dump(recombined_output, 'recombined')
 
     # Verify if recombined is identical to original

@@ -6,8 +6,8 @@ from typing import Dict, Any, List, Union, Tuple
 import re 
 # JSON delamination and recombination utility functions
 
-def deep_dict(d, k):
 
+def deep_dict(d, k):
     if k[0] in d:
         if len(k) > 1: 
             nd = d[k[0]]
@@ -26,30 +26,43 @@ def deep_dict(d, k):
         d[k[0]] = n
     return d
 
-
-
-def build_fine_query(doop, t="    "):
-    res = []
-    chl = ""
-    for k,v in doop.items():
-        sp = k.split('[')
+def classify(node, chld):
+    if "[" in node:
+        sp = node.split('[')
         field = sp[0]
-        if len(sp) > 1:           
-           
-            key = sp[1][:-1]
-            key = f"{key}: .{key}"
-            arg = build_fine_query(v, t+t)
-            mem = f'.{field} // [] | map({{\n{t}{key}, {arg}}})'
+        key = sp[1][:-1]
+        return field, key, "array"    
+    elif chld is None:
+        return node, None, "leaf"
+    else:
+        return node, None, "dict"
 
-            #field = f"{field}: .{chl},"
-        else:
-            mem = "."+sp[0]
-        
-        res.append(f"{field}: ({mem})")
+
+def build_fine_query(doop, t="    ", pref = ""):
+    res = []
+   
+    for k,v in doop.items():
+        field, key, typ = classify(k, v)
+
+        match typ:
+            case "array":           
+                key = f"{key}: .{key}"
+                arg = build_fine_query(v, t+t)
+                mem = f'(\n{t}{pref}.{field} // [] | map({{\n{t}{key},\n{t} {arg}\n{t}}})\n{t})'
+                mem = f"{field}: {mem}"
+
+            case "leaf":
+                mem = f"{field}: {pref}.{field}"
+
+            case "dict":
+                arg = build_fine_query(v, t+t, f"{pref}.{field}")
+                mem = f'{{\n{t}{arg}\n{t}}}'
+                mem = f"{t}{field}: {mem}"
+
+        res.append(mem)
     res = ",\n".join(res)
     
     return  res
-
 
 
 def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -145,7 +158,7 @@ def permutations( grid):
 
     layers = [[{keys[l]:v} for v in grid[keys[l]]]  for l in range(n)]
 
-    signatures = [{None}]
+    signatures = [None]
 
     res = [None]
     for i in range(0,n):
@@ -210,7 +223,7 @@ def brpt_anchr(var, val):
 
 
 def signature_fmt(sig):
-    if sig == {None}:
+    if sig is None:
         return "single.case"
     res= [str(k).split(".")[-1] + "=" + str(v) for k,v in sig.items()]
     res = ".".join(res)
