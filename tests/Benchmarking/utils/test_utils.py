@@ -162,10 +162,6 @@ with open(wd+"q_tgt.jq", 'w') as f:
 # bash:
 # code --diff q_fine.jq q_tgt.jq 
 
-# test if result of generated query matches target
-fine_data = jq.compile(fine_query).input(original_json_data).first() 
-
-
 # --- Test full delamination run ---
 
 coarse_data, fine_data = delaminate(original_json_data, pathspec)

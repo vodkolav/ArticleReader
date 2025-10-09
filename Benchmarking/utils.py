@@ -26,6 +26,7 @@ def deep_dict(d, k):
         d[k[0]] = n
     return d
 
+
 def classify(node, chld):
     if node == "":
         return '', None, "root"
@@ -33,7 +34,7 @@ def classify(node, chld):
         sp = node.split('[')
         field = sp[0]
         key = sp[1][:-1]
-        return field, key, "array"    
+        return field, key, "array"
     elif chld is None:
         return node, None, "leaf"
     else:
@@ -83,28 +84,16 @@ def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]])
     fix = root.split('[')[0]
 
     fine_query = build_fine_query(deep)
-    fine_query = fine_query.replace(f"{fix}: (.{fix} // [] |", f".{fix} |=")[:-1]
     print(f"Fine Query: \n{fine_query}")
 
-    coarse_query = ", ".join([re.sub(r"\[.*?\]", "[]?", path) for path in path_specs])
+    coarse_query = ", ".join([re.sub(r"\[.*?\]", "[]", path) for path in path_specs])
     coarse_query = f"del({coarse_query})"
     print(f"Coarse Query: \n{coarse_query}")
-
 
     fine_data = jq.compile(fine_query).input(original_json).first()    
     coarse_data = jq.compile(coarse_query).input(original_json).first()
 
     return coarse_data, fine_data
-
-
-def splt(value):
-    sp = value.split('[')
-    field = sp[0]
-    if len(sp) > 1:           
-        key = sp[1][:-1]
-    else: 
-        key = None
-    return field, key
 
 
 def arr_merge(coarse, fine, key, deep_map):
@@ -128,19 +117,30 @@ def arr_merge(coarse, fine, key, deep_map):
 def deep_merge(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], deep_map: Dict[str, str]) -> Dict[str, Any]:
     
     for path, chld in deep_map.items():
-        field, key = splt(path)
+
+        field, key, typ = classify(path, chld)
 
         if coarse_data.get(key) != fine_data.get(key) :
             raise ValueError(f"Key mismatch: {coarse_data.get(key)} != {coarse_data.get(key)}")
-        
-        if key != None :
-            if field in coarse_data:
-                coarse_data[field] = arr_merge(coarse_data[field], fine_data[field], key, chld)
-            else:
-                if fine_data[field] != []:
-                    coarse_data[field] = fine_data[field]
-        else:
-            coarse_data[field] = fine_data[field]
+
+        match typ:
+            case "array":
+                if field in coarse_data:
+                    coarse_data[field] = arr_merge(coarse_data[field], fine_data[field], key, chld)
+                else:
+                    if fine_data[field] != []:
+                        coarse_data[field] = fine_data[field]
+
+            case "leaf":
+                coarse_data[field] = fine_data[field]
+
+            case "dict":
+                if field in coarse_data:
+                    coarse_data[field] = deep_merge(coarse_data[field], fine_data[field], chld)
+
+            case 'root':
+                coarse_data = deep_merge(coarse_data, fine_data, chld)
+
     return coarse_data
 
 
@@ -148,7 +148,7 @@ def recombine(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], path_specs
     
     deep = {}
     for p in path_specs:
-        k = p.split('.')[1:]
+        k = p.split('.')
         #print(p)
         deep = deep_dict(deep, k)
 
