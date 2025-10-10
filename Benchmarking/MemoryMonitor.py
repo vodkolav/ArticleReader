@@ -166,12 +166,14 @@ class MemoryMonitor:
             # "stage": self.stage,
             "sampling_type": "interval_sec",
             "sampling_value": self.interval,
-            #"start": 1740272567.8687654,
-            "max_memory_use": memuse,
-            "run_time_sec": dur,
             "data": self.memory_log,
-            "exceptions": self.exception,
-            "memory_limit_bytes": self.memory_limit_bytes,
-            "n_threads": None
-        }
+            "summary": {
+                "n_samples": len(self.memory_log),
+                "duration_sec": dur,
+                "max_memory_use_mb": memuse,
+                "exceptions": self.exception,
+                "memory_limit_bytes": self.memory_limit_bytes,
+                "n_threads": None
+                    }
+            }
         return res

@@ -34,6 +34,12 @@ class TTSPipeline(Pipeline):
                 ".meta.chunk_length": self.init_chunker,
                 ".meta.batch_size": self.init_batch,
             }
+        
+        self.delamination_spec = [
+            ".tracks.episodes.data", 
+            ".tracks.resources.data", 
+            ".tracks.log.data"] 
+        
         self.current_case = {}
         #self.first = True
 
@@ -159,6 +165,8 @@ class TTSPipeline(Pipeline):
                     overrides=overrides,
                     run_opts={"device":self.device}
                     )
+        
+        # TODO: still need this?
         self.tts_model.id = tts_model_name
 
 
@@ -196,7 +204,6 @@ class TTSPipeline(Pipeline):
             else:
                 continue  # already initialized to the same value
         first = False
-        self.init_telemetry(new_case)
 
 
     def run_case(self, new_case):
@@ -242,6 +249,7 @@ class TTSPipeline(Pipeline):
             #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
 
             self.init_case(new_case)
+            self.init_telemetry(new_case)
             self.run_case(new_case)
             self.close_case(new_case)
 

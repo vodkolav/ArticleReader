@@ -5,16 +5,22 @@ import json
 from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
-from Benchmarking.utils import span_grid, delaminate, recombine
+from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_key
 from Benchmarking.telemetry_manager import TelemetryManager
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO )
 
 class Bench:
 
     def __init__(self, benchmarks_root = "benchmark", folder = None):
 
         if folder:
+            # load from existing experiment folder 
             self.experiment_id = folder
         else:
+            # create new experiment folder
             self.experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
         
         self.folder = os.path.join(benchmarks_root, self.experiment_id)
@@ -23,13 +29,7 @@ class Bench:
 
         self.benchmarks_root = benchmarks_root
 
-        patt = "*.json"
-
-        self.donecases = self.load_benchmarks(patt) 
-       
-        self.pathspec = [".tracks.episodes.data", 
-            ".tracks.resources.data", 
-            ".tracks.log.data"] 
+        self.DONEcases = self.load_cases() 
 
 
     def configure(self, pipeline: Pipeline):
@@ -41,9 +41,8 @@ class Bench:
 
 
     def check_grid(self, grid):
-        existing = os.path.join(self.folder, "grid.json")
-        if os.path.exists(existing):
-            exgrid = self.read_config(existing)
+        if os.path.exists(os.path.join(self.folder, "grid.json")):
+            exgrid = self.read_config("grid")
             if exgrid != grid:
                 print("Warning: existing grid differs from new grid.")
                 print("Existing grid:")
@@ -54,7 +53,7 @@ class Bench:
             self.write_config(grid, filename = "grid", sort_keys=False)
 
 
-    def unfurl_grid(self, case_template, grid, pathspec):
+    def unfurl_grid(self, case_template, grid):
         # span grid to experiment_configs atop template case
         """
         grid = {'meta.chunk_length': [75, 100],
@@ -65,25 +64,48 @@ class Bench:
             }
         """
         self.check_grid(grid)
-        self.pathspec = pathspec
         self.TODOcases = span_grid(grid, case_template)
 
-        # TODO: check if some cases already done 
-        #    if case not yet exists
-        # if self.force or not (pd.DataFrame([self.case]).iloc[0] == self.donecases).all(axis=1).any():                                
-        #     experiment_configs.append(case)
-        # else:
-        #     # if case in donecases and not force: skip and log
-        #     print("data for case already exists:\n", self.case)
+        self.check_existing()
 
         #TODO: allow to add multiple grids for "or" combinations
 
-    def load_benchmarks(self, patt = "*"):
-        paths = Path(self.benchmarks_root).glob(patt +".json")
-        experiments = [pd.read_json(p, orient="records") for p in paths]
-        if experiments:
-            experiments = pd.concat(experiments)
-        return experiments
+
+    def check_existing(self):
+        # check if some cases already done and filter them out of TODOcases
+        if not self.DONEcases:
+            return False
+        doneconfigs = filter_out_key("summary", self.DONEcases)
+
+        subm = len(self.TODOcases)
+
+        self.TODOcases = [c for c in self.TODOcases if not filter_out_key("summary", c) in doneconfigs]
+
+        logger.info("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
+                    subm, len(doneconfigs), len(self.TODOcases))
+
+        # write_json(self.TODOcases, "todo_cases.json", sort_keys=True)
+        # write_json(self.DONEcases, "done_cases.json", sort_keys=True)
+        # write_json(doneconfigs, "doneconfigs.json", sort_keys=True)
+
+    def load_cases(self, patt = "*.coarse"):
+
+        pth = Path(self.folder)
+        
+        paths = list(pth.glob(patt +".json"))
+        
+        if paths == []:
+            print(f"No existing cases found in {self.folder} matching {patt}.")
+            return []
+        
+        logger.info(f"loading {len(paths)} files from:", pth.absolute())
+        logger.info(str(paths[0]), "...", sep = "\n")
+
+        cases = []
+        for i,p in enumerate(paths):
+            cases.append(self.read_config(p.stem))
+   
+        return cases
 
 
     def summary(Cases):
@@ -93,34 +115,15 @@ class Bench:
         return jn[cols]
 
 
-    def read_configs(config_filepath):
-        """Reads experiment configurations from a JSON file"""
-        try:
-            with open(config_filepath, 'r') as f:
-                experiment_configs = json.load(f)
-        except FileNotFoundError:
-            print(f"Error: Configuration file not found at {config_filepath}")
-            return
-        except json.JSONDecodeError:
-            print(f"Error: Invalid JSON in {config_filepath}")
-            return
-
-        print(f"Loaded {len(experiment_configs)} experiments from {config_filepath}")
-        return experiment_configs
+    def read_config(self, filename):
+        config_filepath = os.path.join(self.folder , f"{filename}.json")
+        caSe = read_json(config_filepath)
+        return caSe
 
 
     def write_config(self, caSe, filename, sort_keys = False):
         config_filepath = os.path.join(self.folder , f"{filename}.json")
-        """Writes experiment configurations to a JSON file"""
-        try:
-            with open(config_filepath, 'w+') as f:
-                json.dump(caSe, f, indent=2, sort_keys=sort_keys)
-        except FileNotFoundError:
-            print(f"Error: Configuration file not found at {config_filepath}")
-            return
-        except json.JSONDecodeError:
-            print(f"Error: Invalid JSON in {config_filepath}")
-            return
+        write_json(caSe, config_filepath, sort_keys=sort_keys)
 
 
     def run_experiments(self, force = False):
@@ -136,27 +139,30 @@ class Bench:
                 # TODO: make it graceful
 
             print("saving benchmark data")
-            experiment_run =self.pipeline.tele.results()
+            experiment_run =self.pipeline.results()
             case_sign = experiment_run['summary']["case_signature"]
             tstp    = experiment_run['summary']["timestamp"]
 
             case_id = tstp +"."+ case_sign
             experiment_run['summary']["case_id"] = case_id
 
-            coarse_data, fine_data = delaminate(experiment_run, self.pathspec)
+            coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)
             self.write_config(coarse_data, f"{case_id}.coarse")
             self.write_config(fine_data, f"{case_id}.fine")
 
+            #TODO: should be optional
             self.test_recombination(experiment_run, coarse_data, fine_data, case_id)
 
 
     def test_recombination(self, original, coarse_data, fine_data, case_id):
 
-        recombined = recombine(coarse_data, fine_data, self.pathspec)
-        assert recombined == original
-
-        self.write_config(original, f"{case_id}.original", sort_keys = True)
-        self.write_config(recombined, f"{case_id}.recombined", sort_keys= True)
+        recombined = recombine(coarse_data, fine_data, self.pipeline.delamination_spec)
+        if  recombined == original:
+            logger.info(f"Recombination successful for case {case_id}: Output matches original data!")
+        else:
+            logger.error(f"Recombination failed for case {case_id}: Output does NOT match original data!")
+            self.write_config(original, f"{case_id}.original", sort_keys = True)
+            self.write_config(recombined, f"{case_id}.recombined", sort_keys= True)
 
 
     def run_experiments_parallel(self, experiment_configs: list, num_cores: int = None ):
@@ -216,32 +222,4 @@ class Bench:
                 print(res["status"], res["timestamp"])
 
         return all_results, self.benchmarks_root
-
-
-
-
-    def load_results(results_dir, patt = "*"):
-        #TODO: check if thats a redundant function
-        pth = Path(results_dir)
-        
-        paths = list(pth.glob(patt +".json"))
-        
-        print(f"loading {len(paths)} files from:", pth.absolute())
-        print(str(paths[0]), "...", sep = "\n")
-
-        experiments = ['']*len(paths)
-        episodes = []
-        for i,p in enumerate(paths):
-            # try:
-                with open(p) as f:
-                    data = json.load(f)
-                    experiment, exp_episodes = load_experiment(data)
-                    experiments[i] = experiment
-                    episodes.append(exp_episodes)
-            # except Exception as ex: 
-            #     print("oops:", p)
-        experiments = pd.DataFrame(experiments)
-        episodes = pd.concat(episodes)
-        print("done.")
-        return experiments, episodes
 

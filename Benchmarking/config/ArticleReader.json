@@ -30,16 +30,6 @@
       "max_decoder_steps": 2000
     }
   },
-  "summary": {
-    "timestamp": "00.00.00-00.00.42",
-    "max_memory_use": 0,
-    "run_time_sec": 0,
-    "avg_percent_silence": 0,
-    "exceptions": null,
-    "n_threads": null,
-    "experiment_id": "",
-    "case_signature": "necessary placeholder"
-  },
   "tracks": {
     "episodes": {
       "sampling_type": "interval_episodes",
@@ -47,7 +37,7 @@
     },
     "log": {
       "sampling_type": "on_demand",
-      "sampling_value": null      
+      "sampling_value": null
     },
     "resources": {
       "sampling_type": "interval_sec",

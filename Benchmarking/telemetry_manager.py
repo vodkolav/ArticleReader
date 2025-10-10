@@ -168,6 +168,7 @@ class TelemetryManager:
         self.summary["start_time"] = run_epoch
         self.summary["timestamp"] = self.timestamp(run_epoch)
 
+        #TODO: looks like a hack, fix it
         self.summary["init_rss_mb"] = self.sensors[".tracks.resources"].get_memory_usage_mb()
 
 
@@ -197,8 +198,8 @@ class TelemetryManager:
         #print("combining tts_profiler results")
 
          for k,v in self.sensors.items():
-            mem_summary = v.summarize()
-            self.case = butils.upd_path(k, self.case ,mem_summary)
+            sens_summary = v.summarize()
+            self.case = butils.upd_path(k, self.case, sens_summary)
 
 
     def end(self):

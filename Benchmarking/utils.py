@@ -80,9 +80,6 @@ def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]])
         #print(p)
         deep = deep_dict(deep, k)
 
-    root = list(deep.keys())[0]
-    fix = root.split('[')[0]
-
     fine_query = build_fine_query(deep)
     print(f"Fine Query: \n{fine_query}")
 
@@ -193,8 +190,14 @@ def qua(val):
     return val
 
 
-def upd_path(pth, templ, val):
-    if jq.compile(f'{pth}?').input(templ).first():
+def filter_out_key(key, templ):
+    jqq = f'del(..| .{key}?)'
+    return jq.compile(jqq).input(templ).first() 
+
+
+def upd_path(pth, templ, val, force = False):
+    
+    if force or jq.compile(f'{pth}?').input(templ).first():
         val = qua(val)
         jqquery = f'{pth} = {val}'
         templ = jq.compile(jqquery).input(templ).first() 
@@ -202,6 +205,8 @@ def upd_path(pth, templ, val):
         return templ
     else:
         print(f"key {pth} not in template")
+        #TODO: check if we really need this case.
+        # naturally, an update function should create missing paths. or not? 
         raise KeyError(pth)
     
 
@@ -209,7 +214,6 @@ def span_grid(grid, templ):
     # signature is the set of parameters 
     # and their values that uniquely identify this 
     # case from all the other cases in the grid
-
     cases = []
     cells, signatures = permutations(grid)
 
@@ -218,7 +222,7 @@ def span_grid(grid, templ):
         caSe[cidp] = signature_fmt(siGn)
         # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
-            t = upd_path(k, t, v)
+            t = upd_path(k, t, v, force=True)
         cases.append(t) 
     return cases
 
@@ -253,3 +257,30 @@ def mg(A,B, sign):
     if len(B) >1 :
         sign = [mgn(x, y) for x in sign for y in B]
     return res, sign
+
+
+def read_json(filepath):
+    """Reads experiment configurations from a JSON file"""
+    try:
+        with open(filepath, 'r') as f:
+            caSe = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found at {filepath}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: Invalid JSON in {filepath}")
+        return
+    return caSe
+
+
+def write_json(caSe, filepath, sort_keys = False):
+    """Writes experiment configurations to a JSON file"""
+    try:
+        with open(filepath, 'w+') as f:
+            json.dump(caSe, f, indent=2, sort_keys=sort_keys)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found at {filepath}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: Invalid JSON in {filepath}")
+        return

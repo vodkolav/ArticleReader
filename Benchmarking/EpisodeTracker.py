@@ -149,8 +149,11 @@ class EpisodeTracker:
         res = {
             "sampling_type": self._sampling_type,
             "sampling_value": self.sampling_value,
-            "run_time_sec": dur,
             "data": self.episodes,
-            "exceptions": self.exception,
+            "summary": {
+                "n_samples": len(self.episodes),
+                "duration_sec": dur,
+                "exceptions": self.exception,
+                    }
         }
         return res

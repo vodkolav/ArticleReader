@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from Benchmarking.telemetry_manager import TelemetryManager
 
 class Pipeline:
@@ -5,8 +6,13 @@ class Pipeline:
     def __init__(self, output_dir = "output", 
                  checkpoints_dir="checkpoints", 
                  patt = "*"):
+        self.delamination_spec = []
         pass
     
-    def run_case(self, new_case):
+    @abstractmethod
+    def execute(self, new_case):
         pass
-
+    
+    @abstractmethod
+    def results(self):
+        return self.tele.results()

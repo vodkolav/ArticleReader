@@ -6,7 +6,7 @@ ttsppl = TTSPipeline()
 
 case_template = ttsppl.case_template()
 
-bench = Bench(folder="20251009-1501") # open existing folder
+bench = Bench(folder="20251010-1822") # open existing folder
 
 #bench = Bench() # create new folder
 
@@ -39,14 +39,10 @@ smallgrid = {".meta.chunk_length": [75,100],
        }
 smallgrid
 
-pathspec = [".tracks.episodes.data", 
-            ".tracks.episodes.run_time_sec",
-            ".tracks.episodes.exceptions",
-            ".tracks.resources.data", 
-            ".tracks.log.data"] 
 
-chosengrid = onegrid
-bench.unfurl_grid(case_template, chosengrid, pathspec)
+chosengrid = smallgrid  # onegrid # twogrid  #
+
+bench.unfurl_grid(case_template, chosengrid)
 
 print("len(bench.TODOcases):", len(bench.TODOcases))
 
