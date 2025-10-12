@@ -13,7 +13,7 @@ from Benchmarking.telemetry_manager import TelemetryManager
 import torch
 from speechbrain.inference import HIFIGAN, Tacotron2
 
-
+import time
 from datetime import datetime
 import os
 import json
@@ -26,12 +26,18 @@ class TTSPipeline(Pipeline):
         self.output_dir = output_dir
         self.checkpoints_dir = checkpoints_dir
         # self.tele = None
+        self.tstp_format = "%Y%m%d-%H%M%S"
+
+        # Order of initializers matters, as some depend on others.
+        # If a parameter changes, all downstream initializers must re-run.
+        # * since Python 3.7 dicts preserve insertion order
         self.initializers = {
-                ".data.test_data": self.init_preprocess,
                 ".meta.device": self.init_device,
                 ".model_tts.name": self.init_tts_model,
                 ".model_voc.name": self.init_voc_model,
+                ".data.test_data": self.init_preprocess,
                 ".meta.chunk_length": self.init_chunker,
+                ".meta.limit": self.init_limit,
                 ".meta.batch_size": self.init_batch,
             }
         
@@ -43,14 +49,14 @@ class TTSPipeline(Pipeline):
         self.current_case = {}
         #self.first = True
 
-    def set_telemetry(self, telem: TelemetryManager):
+    def set_telemetry(self, tele: TelemetryManager):
         level = ""
         pth = level + ".tracks.resources"
-        self.tele = telem
-        self.run_case = self.tele.add_memory_monitor(self.run_case, {}, pth )
+        self.tele = tele
+        self.execute = self.tele.add_memory_monitor(self.execute, {}, pth )
 
 
-    def init_telemetry(self, new_case):
+    def init_telemetry(self):
         # re-runs for every new case
 
         # self.tele.__init__() #? 
@@ -76,7 +82,7 @@ class TTSPipeline(Pipeline):
         ssr = "episodes"
         pth = level + ".tracks"
         
-        tmp = get_path(pth, new_case)
+        tmp = get_path(pth, self.current_case)
         if ssr in tmp:
             conf = tmp[ssr]
             lbl = f"{level}.tracks.{ssr}"
@@ -85,7 +91,7 @@ class TTSPipeline(Pipeline):
 
         self.narrator.telemetry = self.tele
         self.chunker.telemetry = self.tele
-        self.tele.start(new_case)
+        self.tele.start(self.current_case)
 
 
     def init_preprocess(self, new_case):
@@ -112,12 +118,14 @@ class TTSPipeline(Pipeline):
         self.chunker = Chunker(max_len=chunk_length)
         self.chunker.split_text_into_chunks(self.preprocessed_text)
 
+
+    def init_limit(self, new_case):
         lim = new_case["meta"].get("limit",None)
         if lim:
             a, b = lim
             self.tele.print(f"limited to chunks {a} to {b}")
-            self.chunker.limit = lim
 
+        self.chunker.limit_chunks(lim)
 
 
     def init_batch(self, new_case):
@@ -148,9 +156,6 @@ class TTSPipeline(Pipeline):
 
     def init_device(self, new_case):
         self.device = "cuda" if new_case["meta"]["device"] =="GPU" else "cpu"
-        # changing device forces re-initialization of models
-        self.init_tts_model(new_case)
-        self.init_voc_model(new_case)
 
 
     def init_tts_model(self, new_case):
@@ -174,8 +179,8 @@ class TTSPipeline(Pipeline):
         # /home/michael/Projects/ArticleReader/
         fl = "Benchmarking/config/ArticleReader.json"
         with open(fl, 'r') as f:
-            templ = json.load(f)
-        return templ
+            template = json.load(f)
+        return template
 
 
     def init_case(self, new_case):
@@ -184,10 +189,23 @@ class TTSPipeline(Pipeline):
         if self.current_case == new_case:
             return  # raise Error;  all fields are already identical, which should not happen
 
-        first = False
+        force = False
         if self.current_case == {}:
             self.current_case = new_case
-            first = True  # raise Error;  all fields are already identical, which should not happen
+            force = True  # first run, so all initializers must run
+
+        self.current_case['summary'] = new_case['summary']
+
+        run_epoch = self.now()
+        self.current_case['summary']["start_time"] = run_epoch
+
+        tstp = self.timestamp(run_epoch)
+        self.current_case['summary']["timestamp"] = tstp
+
+        case_sign = new_case['summary']["case_signature"]
+
+        case_id = tstp +"."+ case_sign
+        self.current_case['summary']["case_id"] = case_id
 
         #TODO: check for all parameters in cases, whether they've changed - not just initializers
 
@@ -198,24 +216,50 @@ class TTSPipeline(Pipeline):
             except KeyError as e:
                 raise ValueError(f"Case is missing required key: {key}")
 
-            if cur_val != new_val or first:
+            if cur_val != new_val or force:
+                force = True # once a change is detected, all downstream initializers must run
+                if cur_val is None:
+                    self.tele.print(f" initializing {key} to {new_val}")
+                else:
+                    self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
                 init_func(new_case)
                 upd_path(key, self.current_case, new_val)
             else:
                 continue  # already initialized to the same value
-        first = False
+        force = False
 
 
-    def run_case(self, new_case):
+    def now(self):
+        # TODO: variable format
+        return time.time()
 
-        tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
-        case_file = os.path.join(self.output_dir, tstp)
+
+    def timestamp(self, entry = None):
+        if entry:
+            return datetime.fromtimestamp(entry)\
+                           .strftime(self.tstp_format)  #TODO:  should be in config
+        else:
+            return self.timestamp(self.now())
+
+
+    def case_filename(self):
+        case_id = self.current_case['summary']["case_id"]
+        experiment_id = self.current_case['summary']["experiment_id"]
+        exp_dir = os.path.join(self.output_dir, experiment_id)
+        os.makedirs(exp_dir, exist_ok=True)
+        pth = os.path.join(exp_dir, case_id)
+        return pth
+
+
+    def run_case(self):
+
+        case_file = self.case_filename()
 
         # save chunks as markdown for debugging
         self.chunker.save_chunks_as_text(case_file + ".md")
 
         # TTS
-        # sort chunks by len for effeciency
+        # sort chunks by len for efficiency
         self.chunker.sort_by_text_len()
 
         self.tele.print(" Running text_to_speech_df")
@@ -236,8 +280,10 @@ class TTSPipeline(Pipeline):
         self.tele.print("done saving sound")
 
 
-    def close_case(self, new_case):
+    def close_case(self):
         # create a report
+        end_timestamp = self.now()
+        self.current_case['summary']["end_time"] = end_timestamp
         self.tele.print("creating report")
         self.tele.end()
         #result.update(models_result)
@@ -249,9 +295,9 @@ class TTSPipeline(Pipeline):
             #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
 
             self.init_case(new_case)
-            self.init_telemetry(new_case)
-            self.run_case(new_case)
-            self.close_case(new_case)
+            self.init_telemetry()
+            self.run_case()
+            self.close_case()
 
         except Exception as e:
             print('what')

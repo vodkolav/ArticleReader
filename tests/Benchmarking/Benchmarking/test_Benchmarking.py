@@ -6,9 +6,9 @@ ttsppl = TTSPipeline()
 
 case_template = ttsppl.case_template()
 
-bench = Bench(folder="20251010-1822") # open existing folder
+#bench = Bench(folder="20251010-1822") # open existing folder
 
-#bench = Bench() # create new folder
+bench = Bench() # create new folder
 
 
 bench.configure(ttsppl)
@@ -24,6 +24,7 @@ onegrid = {  ".meta.chunk_length": [75],
 
 twogrid = {  ".meta.chunk_length": [75],
              ".meta.batch_size": [2,3],
+             ".meta.limit": [[20,35]], 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
              ".meta.device": ["CPU"], 
@@ -37,10 +38,18 @@ smallgrid = {".meta.chunk_length": [75,100],
              ".meta.device": ["CPU"], 
              ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
        }
-smallgrid
+
+medgrid = {  ".meta.chunk_length": [75, 100, 200],
+             ".meta.batch_size": [10, 20, 30],
+             ".meta.limit": [[20,300]], 
+             ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_voc.name": ["tts-hifigan-ljspeech"],
+             ".meta.device": ["CPU"], 
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+}
 
 
-chosengrid = smallgrid  # onegrid # twogrid  #
+chosengrid = twogrid  # medgrid  # smallgrid  # onegrid # 
 
 bench.unfurl_grid(case_template, chosengrid)
 

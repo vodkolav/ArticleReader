@@ -31,6 +31,8 @@ class Bench:
 
         self.DONEcases = self.load_cases() 
 
+        self.tele = TelemetryManager()
+
 
     def configure(self, pipeline: Pipeline):
         
@@ -123,7 +125,7 @@ class Bench:
 
     def write_config(self, caSe, filename, sort_keys = False):
         config_filepath = os.path.join(self.folder , f"{filename}.json")
-        write_json(caSe, config_filepath, sort_keys=sort_keys)
+        write_json(caSe, config_filepath, sort_keys=sort_keys, mode = 'x')
 
 
     def run_experiments(self, force = False):
@@ -140,12 +142,7 @@ class Bench:
 
             print("saving benchmark data")
             experiment_run =self.pipeline.results()
-            case_sign = experiment_run['summary']["case_signature"]
-            tstp    = experiment_run['summary']["timestamp"]
-
-            case_id = tstp +"."+ case_sign
-            experiment_run['summary']["case_id"] = case_id
-
+            case_id = experiment_run['summary']["case_id"]
             coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)
             self.write_config(coarse_data, f"{case_id}.coarse")
             self.write_config(fine_data, f"{case_id}.fine")
@@ -153,6 +150,8 @@ class Bench:
             #TODO: should be optional
             self.test_recombination(experiment_run, coarse_data, fine_data, case_id)
 
+        run_results = self.tele.results()
+        self.write_config(run_results, "run_results")
 
     def test_recombination(self, original, coarse_data, fine_data, case_id):
 

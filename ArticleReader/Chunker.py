@@ -29,7 +29,6 @@ class Chunker:
     def __init__(self, max_len=100):
         self.max_len = max_len
         self._batch_size = 1 # default
-        self.limit = None
 
     def breakByWords(self, text):
         ss = re.split(r"[ \n]+", text)
@@ -149,7 +148,6 @@ class Chunker:
         # print(text)
 
         self.chunks = self.breakByParagraphs(text)
-        self.chunks_df = self.as_pandas()
         
         # self.chunks = pd.DataFrame(rawchunks, columns=["sentence"]).reset_index()
         # self.chunks["text_len"] = self.chunks.sentence.str.len()
@@ -165,13 +163,18 @@ class Chunker:
         return -1
 
 
-    def feed_df_batches(self, ):
-        if self.limit:
-            a,b = self.limit
-            
+    def limit_chunks(self, lim):
+        if lim:
+            sl = slice(*lim)
         else:
-            a = 0
-            b = len(self.chunks_df)
+            sl = slice(None)
+        self.chunks_df = self.prep_df(self.chunks[sl])
+
+
+    def feed_df_batches(self, ):
+
+        a = 0
+        b = len(self.chunks_df)
 
         n = self.batch_size
         l = b-a
@@ -185,13 +188,19 @@ class Chunker:
 
             yield self.chunks_df.iloc[fr : to].copy()
 
+
     def sort_by_text_len(self):
         self.chunks_df.sort_values("text_len", ascending=False, inplace=True)  
 
+
+    def prep_df(self, chunks):
+        chunks_df = pd.DataFrame(chunks, columns=["sentence"]).reset_index()
+        chunks_df["text_len"] = chunks_df.sentence.str.len()
+        return chunks_df
+
+
     def as_pandas(self):
-        chunks = pd.DataFrame(self.chunks, columns=["sentence"]).reset_index()
-        chunks["text_len"] = chunks.sentence.str.len()
-        return chunks
+        return self.prep_df(self.chunks)
 
 
     def get_chunks_sorted(self, n_chunks = 3, start=0):

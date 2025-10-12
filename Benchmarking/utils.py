@@ -273,10 +273,10 @@ def read_json(filepath):
     return caSe
 
 
-def write_json(caSe, filepath, sort_keys = False):
+def write_json(caSe, filepath, sort_keys = False, mode = 'w'):
     """Writes experiment configurations to a JSON file"""
     try:
-        with open(filepath, 'w+') as f:
+        with open(filepath, mode) as f:
             json.dump(caSe, f, indent=2, sort_keys=sort_keys)
     except FileNotFoundError:
         print(f"Error: Configuration file not found at {filepath}")

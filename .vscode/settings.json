@@ -1,3 +1,9 @@
 {
-    "todo-tree.tree.showBadges": true
+    "todo-tree.tree.showBadges": true,
+    "cSpell.words": [
+        "chunker",
+        "savedir",
+        "tele",
+        "tstp"
+    ]
 }

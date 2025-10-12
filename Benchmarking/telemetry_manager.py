@@ -153,20 +153,10 @@ class TelemetryManager:
             print(f"\r{what}" , end='')
 
 
-    def misc(self, data):
-        self.case['misc'] = data
-
-
-
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         self.case = new_case
         self.summary = self.case["summary"]
-        #self.config_scheduling()
-
-        run_epoch = self.now()
-        self.summary["start_time"] = run_epoch
-        self.summary["timestamp"] = self.timestamp(run_epoch)
 
         #TODO: looks like a hack, fix it
         self.summary["init_rss_mb"] = self.sensors[".tracks.resources"].get_memory_usage_mb()
@@ -195,7 +185,6 @@ class TelemetryManager:
 
 
     def collect_sensors(self):
-        #print("combining tts_profiler results")
 
          for k,v in self.sensors.items():
             sens_summary = v.summarize()
@@ -204,8 +193,6 @@ class TelemetryManager:
 
     def end(self):
         # Optional: Print end message
-        end_timestamp = self.now()
-        self.summary["end_time"] = end_timestamp
         self.collect_sensors()
         #self.collect_episodes()        
         # alg_name = self.algorithm["name"]
@@ -225,30 +212,3 @@ class TelemetryManager:
             msg = f"\r {self.mode} Episode {self.i_episode}/{self.total_episodes}" + message
             self.report(msg)
 
-
-    def save_metrics(self, filename: str):
-        """Saves collected metrics to a JSON file."""
-        # metrics_data = {
-        #     "metadata": self.metadata,
-        #     "env": self.env,
-        #     "algorithm": self.algorithm,
-        #     "strategy": self.strategy,             
-        #     "episodes": self.episodes,  
-        # }
-        with open(filename, 'w') as f:
-            json.dump(self.metrics_data, f, indent=4, cls=NumpyEncoder)
-        print(f"Metrics saved to {filename}")
-
-
-    def load_metrics(self, filename: str):
-        """Loads metrics from a JSON file."""
-        try:
-            with open(filename, 'r') as f:
-                self.metrics_data = json.load(f)
-                # self.metadata = metrics_data.get("metadata", {}) 
-                # self.episodes = metrics_data.get("episodes", [])
-            print(f"Metrics loaded from {filename}")
-        except FileNotFoundError:
-            print(f"Error: Metrics file not found at {filename}")
-        except json.JSONDecodeError:
-            print(f"Error: Could not decode JSON from {filename}")
