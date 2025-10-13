@@ -16,8 +16,13 @@ class Bench:
 
 #TODO: support multiple runs of an experiment?
 
-    def __init__(self, benchmarks_root = "benchmark", folder = None):
-
+    def __init__(self, benchmarks_root = "benchmark",
+                       output_root = "output", 
+                       folder = None):
+        
+        self.TELE = TelemetryManager()       
+    
+        self.output_root = output_root
         self.benchmarks_root = benchmarks_root
 
         if folder:
@@ -26,11 +31,12 @@ class Bench:
             self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # check if folder exists and has experiment.json            
             if os.path.exists(os.path.join(self.folder, "experiment.json")):
-            # load existing experiment                
+            # load existing experiment 
                 self.config = self.read_config("experiment")
             else:
-                self.config = {}
-                self.tele.warning(f"experiment.json not found in {self.folder}, starting fresh.")
+                self.config = self.config_template() 
+
+                self.TELE.warning(f"experiment.json not found in {self.folder}, starting fresh.")
                 #.write_config(grid, filename = "grid", sort_keys=False)
             
             self.DONEcases = self.load_cases() 
@@ -38,16 +44,19 @@ class Bench:
         else:
             # create new experiment folder
             self.experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
-                
+            self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # Ensure results directory exists
+            self.TELE.warning(f" creating new experiment in {self.folder}.")
             os.makedirs(self.folder, exist_ok=True)
+            self.config = self.config_template()
+            self.DONEcases = []
+        
+        self.TELE.start(self.config)
 
-        self.tele = TelemetryManager()
-        self.tele.start(self.config)
 
-    @property
-    def grid(self):
-        return self.config["grid"] if "grid" in self.config else {}
+    def config_template(self):
+        #TODO: write down system parameters?
+        return {'summary': {"case_signature":"experiment"}}
 
 
     def configure(self, pipeline: Pipeline):
@@ -57,15 +66,22 @@ class Bench:
         self.pipeline = pipeline
         # get template case from pipeline
 
+    @property
+    def grid(self):
+        return self.config["grid"] if "grid" in self.config else {}
 
-    def check_grid(self, grid):
-        if self.grid != grid:
-            self.tele.warning("Warning: existing grid differs from new grid.")
-            self.tele.warning("Existing grid:")
-            self.tele.warning(self.grid)
-            self.tele.warning("New grid:")
-            self.tele.warning(grid)
-
+    @grid.setter
+    def grid(self, val):
+        if self.grid and (self.grid != val):
+            msg = f"""
+            Warning: existing grid differs from new grid.
+            Existing grid:
+            {json.dumps(self.grid)}
+            New grid:
+            {json.dumps(val)}
+            """
+            self.TELE.warning(msg)
+        self.config["grid"] = val 
 
 
     def unfurl_grid(self, case_template, grid):
@@ -78,7 +94,7 @@ class Bench:
                 'meta.device': ['CPU']
             }
         """
-        self.check_grid(grid)
+        self.grid = grid
         self.TODOcases = span_grid(grid, case_template)
 
         self.check_existing()
@@ -96,7 +112,7 @@ class Bench:
 
         self.TODOcases = [c for c in self.TODOcases if not filter_out_key("summary", c) in doneconfigs]
 
-        logger.info("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
+        self.TELE.info("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
                     subm, len(doneconfigs), len(self.TODOcases))
 
         # write_json(self.TODOcases, "todo_cases.json", sort_keys=True)
@@ -111,11 +127,11 @@ class Bench:
         paths = list(pth.glob(patt +".json"))
         
         if paths == []:
-            self.tele.print(f"No existing cases found in {self.folder} matching {patt}.")
+            self.TELE.print(f"No existing cases found in {self.folder} matching {patt}.")
             return []
         
-        self.tele.print(f"loading {len(paths)} files from:", pth.absolute())
-        self.tele.print(str(paths[0]), "...", sep = "\n")
+        self.TELE.print(f"loading {len(paths)} files from:", pth.absolute())
+        self.TELE.print(str(paths[0]), "...", sep = "\n")
 
         cases = []
         for i,p in enumerate(paths):
@@ -148,17 +164,20 @@ class Bench:
 
         for i, config in enumerate(self.TODOcases):
             config['summary']["experiment_id"] = self.experiment_id
+            config['summary']["output_root"] = self.output_root
             status = self.pipeline.execute(config)
             if status != "Ok":
-                self.tele.error("fatal error in run_case. aborting")
+                self.TELE.error("fatal error in run_case. aborting")
                 return
                 # TODO: make it graceful
 
-            self.tele.print("saving benchmark data")
+            self.TELE.print("saving benchmark data")
             experiment_run =self.pipeline.results()
             self.save_case(experiment_run)
 
-        self.tele.end()
+        self.TELE.end()
+        run_results = self.TELE.results()
+        self.write_config(run_results, "experiment")
 
 
     def save_case(self, experiment_run, test_recombination = True):
@@ -171,18 +190,13 @@ class Bench:
             self.test_recombination(experiment_run, coarse_data, fine_data, case_id)
 
 
-    def finalize_run(self):
-        run_results = self.tele.results()
-        self.write_config(run_results, "experiment")
-
-
     def test_recombination(self, original, coarse_data, fine_data, case_id):
 
         recombined = recombine(coarse_data, fine_data, self.pipeline.delamination_spec)
         if  recombined == original:
-            logger.info(f"Recombination successful for case {case_id}: Output matches original data!")
+            self.TELE.print(f"Recombination successful for case {case_id}: Output matches original data!")
         else:
-            logger.error(f"Recombination failed for case {case_id}: Output does NOT match original data!")
+            self.TELE.error(f"Recombination failed for case {case_id}: Output does NOT match original data!")
             self.write_config(original, f"{case_id}.original", sort_keys = True)
             self.write_config(recombined, f"{case_id}.recombined", sort_keys= True)
 
@@ -199,10 +213,10 @@ class Bench:
         if num_cores is None:
             num_cores = os.cpu_count()
             if num_cores is None:
-                self.tele.warning("Could not detect CPU count, defaulting to 1 core.")
+                self.TELE.warning("Could not detect CPU count, defaulting to 1 core.")
                 num_cores = 1
             else:
-                self.tele.print(f"Detected {num_cores} CPU cores. Using {num_cores} workers.")
+                self.TELE.print(f"Detected {num_cores} CPU cores. Using {num_cores} workers.")
 
         # Separate every run of battery of tests to its own dir
         self.benchmarks_root = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
@@ -218,30 +232,30 @@ class Bench:
             # This allows you to submit all tasks without waiting for each one to finish.
             async_results = []
             for i, config in enumerate(experiment_configs):
-                self.tele.print(f"Submitting experiment {i+1}/{len(experiment_configs)}: {config.get('name', 'unnamed')}")
+                self.TELE.print(f"Submitting experiment {i+1}/{len(experiment_configs)}: {config.get('name', 'unnamed')}")
                 result = pool.apply_async(run_case, (config,self.benchmarks_root))
                 async_results.append(result)
 
             # Wait for all tasks to complete and collect results
-            self.tele.print("\nWaiting for experiments to complete...")
+            self.TELE.print("\nWaiting for experiments to complete...")
             for i, res in enumerate(async_results):
                 try:
                     # .get() will block until the result is ready
                     # You can add a timeout if you want to handle unresponsive processes
                     experiment_result = res.get()
                     all_results.append(experiment_result)
-                    self.tele.print(f"Experiment {i+1}/{len(experiment_configs)}")
+                    self.TELE.print(f"Experiment {i+1}/{len(experiment_configs)}")
                 except Exception as e:
-                    self.tele.error(f"Error running experiment {i+1}: {e}")
+                    self.TELE.error(f"Error running experiment {i+1}: {e}")
                     all_results.append({"error": str(e), "config": experiment_configs[i]})
 
-        self.tele.print("\nAll experiments finished.")
-        self.tele.print("\n--- Summary of Results ---")
+        self.TELE.print("\nAll experiments finished.")
+        self.TELE.print("\n--- Summary of Results ---")
         for res in all_results:
             if "error" in res:
-                self.tele.error(f"  FAILED: {res['config'].get('name', 'Unnamed')} - Error: {res['error']}")
+                self.TELE.error(f"  FAILED: {res['config'].get('name', 'Unnamed')} - Error: {res['error']}")
             else:
-                self.tele.print(res["status"], res["timestamp"])
+                self.TELE.print(res["status"], res["timestamp"])
 
         return all_results, self.benchmarks_root
 

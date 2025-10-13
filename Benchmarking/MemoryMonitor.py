@@ -142,6 +142,7 @@ class MemoryMonitor:
                 # Ensure monitoring stops even if an exception occurs
                 self.stop_event.set()
                 monitor_thread.join()
+                self.stop_event.clear()
 
             return output
         return wrapper

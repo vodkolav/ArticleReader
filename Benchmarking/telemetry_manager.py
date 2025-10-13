@@ -80,14 +80,18 @@ class TelemetryManager:
     @total_episodes.setter
     def total_episodes(self, value):
 
+
         #TODO: implement different forms of scheduling reports
         # - total episodes to report (requires how many total episodes will be)
         # - once every x episodes (frequency)
         # - time-based
         # - on demand: whenever something happens (log)
-
-
         self.tot_episodes = value
+
+    @property
+    def output_root(self):
+        return self.case['summary']['output_root']
+
 
     @property
     def mode(self):
@@ -167,9 +171,40 @@ class TelemetryManager:
 
     def start(self, new_case):
         # Start telemetry reporting for an experiment
-        self.case = new_case
         #self.summary = self.case.get("summary", {})
 
+        if self.case == new_case:
+            self.warning("all fields are already identical, which should not happen")  # raise Error?;  
+        
+        force = False
+        if self.case == {}:
+            self.case = new_case
+            force = True  # first run, so all initializers must run
+
+
+        self.case['summary'] = new_case['summary']
+
+        run_epoch = self.now()
+        self.case['summary']["start_time"] = run_epoch
+
+        tstp = self.timestamp(run_epoch)
+        self.case['summary']["timestamp"] = tstp
+
+        case_sign = new_case['summary']["case_signature"]
+
+        case_id = tstp +"."+ case_sign
+        self.case['summary']["case_id"] = case_id
+
+        return force
+
+
+    def case_filename(self):
+        case_id = self.case['summary']["case_id"]
+        experiment_id = self.case['summary']["experiment_id"]
+        exp_dir = os.path.join(self.output_root, experiment_id)
+        os.makedirs(exp_dir, exist_ok=True)
+        pth = os.path.join(exp_dir, case_id)
+        return pth
 
 
     # def collect_episodes(self):
@@ -177,6 +212,8 @@ class TelemetryManager:
 
 
     def collect_log(self):
+        self.case = butils.upd_path(".tracks.log.data", self.case, [], force=True)
+        # FIXME: fix this ugly hack
         self.case["tracks"]["log"]["data"] = self.log
 
 
@@ -206,10 +243,14 @@ class TelemetryManager:
         self.collect_sensors()
         #self.collect_episodes()        
         # alg_name = self.algorithm["name"]
-        self.case["summary"] = self.summary
         #nm = self.summary["experiment_id"]
         #self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
+
+        # create a report
+        end_timestamp = self.now()
+        self.case['summary']["end_time"] = end_timestamp
+
 
 
     def results(self):

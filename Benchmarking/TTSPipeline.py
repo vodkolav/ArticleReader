@@ -20,10 +20,9 @@ import json
 
 
 class TTSPipeline(Pipeline):
-    def __init__(self, output_dir = "output", 
-                 checkpoints_dir="checkpoints", 
+    def __init__(self, checkpoints_dir="checkpoints", 
                  patt = "*"):
-        self.output_dir = output_dir
+        
         self.checkpoints_dir = checkpoints_dir
         # self.tele = None
         self.tstp_format = "%Y%m%d-%H%M%S"
@@ -46,8 +45,17 @@ class TTSPipeline(Pipeline):
             ".tracks.resources.data", 
             ".tracks.log.data"] 
         
-        self.current_case = {}
         #self.first = True
+
+
+    @property
+    def current_case(self):
+        return self.tele.case
+
+    @current_case.setter
+    def current_case(self,val):
+        self.tele.case = val
+
 
     def set_telemetry(self, tele: TelemetryManager):
         level = ""
@@ -91,7 +99,6 @@ class TTSPipeline(Pipeline):
 
         self.narrator.telemetry = self.tele
         self.chunker.telemetry = self.tele
-        self.tele.start(self.current_case)
 
 
     def init_preprocess(self, new_case):
@@ -186,26 +193,7 @@ class TTSPipeline(Pipeline):
     def init_case(self, new_case):
         # TODO: move to base class? 
 
-        if self.current_case == new_case:
-            return  # raise Error;  all fields are already identical, which should not happen
-
-        force = False
-        if self.current_case == {}:
-            self.current_case = new_case
-            force = True  # first run, so all initializers must run
-
-        self.current_case['summary'] = new_case['summary']
-
-        run_epoch = self.now()
-        self.current_case['summary']["start_time"] = run_epoch
-
-        tstp = self.timestamp(run_epoch)
-        self.current_case['summary']["timestamp"] = tstp
-
-        case_sign = new_case['summary']["case_signature"]
-
-        case_id = tstp +"."+ case_sign
-        self.current_case['summary']["case_id"] = case_id
+        force = self.tele.start(new_case) # or new_case? 
 
         #TODO: check for all parameters in cases, whether they've changed - not just initializers
 
@@ -216,14 +204,15 @@ class TTSPipeline(Pipeline):
             except KeyError as e:
                 raise ValueError(f"Case is missing required key: {key}")
 
-            if cur_val != new_val or force:
+            different = cur_val != new_val
+            if different or force:
                 force = True # once a change is detected, all downstream initializers must run
-                if cur_val is None:
+                if not different:
                     self.tele.print(f" initializing {key} to {new_val}")
                 else:
                     self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
                 init_func(new_case)
-                upd_path(key, self.current_case, new_val)
+                self.current_case = upd_path(key, self.current_case, new_val)
             else:
                 continue  # already initialized to the same value
         force = False
@@ -241,22 +230,15 @@ class TTSPipeline(Pipeline):
         else:
             return self.timestamp(self.now())
 
-
-    def case_filename(self):
-        case_id = self.current_case['summary']["case_id"]
-        experiment_id = self.current_case['summary']["experiment_id"]
-        exp_dir = os.path.join(self.output_dir, experiment_id)
-        os.makedirs(exp_dir, exist_ok=True)
-        pth = os.path.join(exp_dir, case_id)
-        return pth
+    @property
+    def case_file(self):
+        return self.tele.case_filename()
 
 
     def run_case(self):
 
-        case_file = self.case_filename()
-
         # save chunks as markdown for debugging
-        self.chunker.save_chunks_as_text(case_file + ".md")
+        self.chunker.save_chunks_as_text(self.case_file + ".md")
 
         # TTS
         # sort chunks by len for efficiency
@@ -276,15 +258,11 @@ class TTSPipeline(Pipeline):
         waveform = torch.cat(tuple(data_converted.waveform), dim=1)
 
         self.tele.print("saving sound")
-        self.narrator.save_audio(case_file + ".wav", waveform)
+        self.narrator.save_audio(self.case_file + ".wav", waveform)
         self.tele.print("done saving sound")
 
 
     def close_case(self):
-        # create a report
-        end_timestamp = self.now()
-        self.current_case['summary']["end_time"] = end_timestamp
-        self.tele.print("creating report")
         self.tele.end()
         #result.update(models_result)
 
