@@ -25,6 +25,8 @@ class MemoryMonitor:
         self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
         self.interval = interval_sec
+        self.init_rss_mb = self.get_memory_usage_mb()
+
 
     def get_free_memory_bytes(self):
         with open('/proc/meminfo', 'r') as mem:
@@ -172,6 +174,7 @@ class MemoryMonitor:
                 "duration_sec": dur,
                 "max_memory_use_mb": memuse,
                 "exceptions": self.exception,
+                "init_rss_mb": self.init_rss_mb,
                 "memory_limit_bytes": self.memory_limit_bytes,
                 "n_threads": None
                     }

@@ -45,7 +45,7 @@ class TelemetryManager:
 
         self.log = []
 
-        self.summary = {}
+        #self.summary = {}
 
 
         #TODO: define float format, ex: Avg Reward (last 100): {avg_reward:.2f}
@@ -121,14 +121,26 @@ class TelemetryManager:
 
 
     def print(self, what):
+        self._print(what,"info")
+
+
+    def _print(self, what, type = "info"):
+        #TODO: change this
         entry = {
-            "type": "info",
+            "type": type,
             "time": self.now(),
             "message": what,
         }
         self.log.append(entry)
-
         self.report(self.dt_format(entry))
+
+
+    def warning(self, what):
+        self._print(what,"warning")
+
+
+    def error(self, what):
+        self._print(what,"error")
 
 
     def dt_format(self, entry: dict):
@@ -156,10 +168,8 @@ class TelemetryManager:
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         self.case = new_case
-        self.summary = self.case["summary"]
+        #self.summary = self.case.get("summary", {})
 
-        #TODO: looks like a hack, fix it
-        self.summary["init_rss_mb"] = self.sensors[".tracks.resources"].get_memory_usage_mb()
 
 
     # def collect_episodes(self):
@@ -186,7 +196,7 @@ class TelemetryManager:
 
     def collect_sensors(self):
 
-         for k,v in self.sensors.items():
+        for k,v in self.sensors.items():
             sens_summary = v.summarize()
             self.case = butils.upd_path(k, self.case, sens_summary)
 
