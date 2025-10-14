@@ -81,11 +81,11 @@ def delaminate(original_json: Dict[str, Any], path_specs: Union[str, List[str]])
         deep = deep_dict(deep, k)
 
     fine_query = build_fine_query(deep)
-    print(f"Fine Query: \n{fine_query}")
+    #print(f"Fine Query: \n{fine_query}")
 
     coarse_query = ", ".join([re.sub(r"\[.*?\]", "[]", path) for path in path_specs])
     coarse_query = f"del({coarse_query})"
-    print(f"Coarse Query: \n{coarse_query}")
+    #print(f"Coarse Query: \n{coarse_query}")
 
     fine_data = jq.compile(fine_query).input(original_json).first()    
     coarse_data = jq.compile(coarse_query).input(original_json).first()

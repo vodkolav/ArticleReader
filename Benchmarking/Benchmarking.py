@@ -46,7 +46,7 @@ class Bench:
             self.experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
             self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # Ensure results directory exists
-            self.TELE.warning(f" creating new experiment in {self.folder}.")
+            self.TELE.print(f" creating new experiment in {self.folder}.")
             os.makedirs(self.folder, exist_ok=True)
             self.config = self.config_template()
             self.DONEcases = []
@@ -99,6 +99,8 @@ class Bench:
 
         self.check_existing()
 
+        self.TELE.print(f"Unfurled grid into {len(self.TODOcases)} TODOcases")
+
         #TODO: allow to add multiple grids for "or" combinations
 
 
@@ -112,7 +114,7 @@ class Bench:
 
         self.TODOcases = [c for c in self.TODOcases if not filter_out_key("summary", c) in doneconfigs]
 
-        self.TELE.info("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
+        self.TELE.print("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
                     subm, len(doneconfigs), len(self.TODOcases))
 
         # write_json(self.TODOcases, "todo_cases.json", sort_keys=True)
@@ -170,6 +172,7 @@ class Bench:
                 self.TELE.error("fatal error in run_case. aborting")
                 return
                 # TODO: make it graceful
+                # TODO: move from TODOcases to DONEcases
 
             self.TELE.print("saving benchmark data")
             experiment_run =self.pipeline.results()
@@ -178,6 +181,7 @@ class Bench:
         self.TELE.end()
         run_results = self.TELE.results()
         self.write_config(run_results, "experiment")
+        self.TELE.print("benchmark run complete!")
 
 
     def save_case(self, experiment_run, test_recombination = True):

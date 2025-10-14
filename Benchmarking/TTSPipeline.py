@@ -59,6 +59,7 @@ class TTSPipeline(Pipeline):
 
     def set_telemetry(self, tele: TelemetryManager):
         self.tele = tele
+        self.tele.intercept_logs("speechbrain")
         pth = ".tracks.resources"
         conf = get_path(pth, self.case_template())
         # The MemoryMonitor tracks the memory usage of the whole process.

@@ -167,10 +167,10 @@ class Narrator:
 
         waveforms, mel_lengths = self.infer(batch)
 
-        print("adding pauses")
+        self.tele.print("adding pauses")
         mel_lengths = self.add_pauses(ordered, mel_lengths, pause_dur=40)
 
-        print("recombine")
+        self.tele.print("recombine")
         # turn into array
         arr = torch.tensor_split(waveforms, len(order), dim=0)
 
@@ -187,32 +187,32 @@ class Narrator:
 
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
-        print("     running TTS model")
-        print("     batch size: ", len(batch))
-        print("self.tts.hparams.max_decoder_steps:", self.tts.hparams.max_decoder_steps )
+        self.tele.print("     running TTS model")
+        self.tele.print("     actual batch size: " +  str(len(batch)))
+        #self.tele.print("self.tts.hparams.max_decoder_steps:"+  str(self.tts.hparams.max_decoder_steps ))
         output = self.tts.encode_batch(batch)
         
         if output is not None: 
             mel_outputs, mel_lengths, alignments = output
-            print("     TTS model finished")
+            self.tele.print("     TTS model finished")
             if self.tts.hparams.max_decoder_steps in mel_lengths:
-                Warning("       We probably have truncated chunks")
+                self.tele.warning("       We probably have truncated chunks")
 
-            print("     running vocoder model")
+            self.tele.print("     running vocoder model")
             waveforms = self.vocoder.decode_batch(
                 mel_outputs, mel_lengths, self.hop_len          
             )  # .squeeze(1)                  
 
             if waveforms is not None:
-                print("     vocoder model finished")   
+                self.tele.print("     vocoder model finished")   
                 # out: batch of waveforms, mel_lengths
                 return waveforms, mel_lengths    
             else:                       
-                print("     vocoder failed. returning silence")
+                self.tele.error("     vocoder failed. returning silence")
                 # return zeros tensor of expected size
                 #waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
         else: 
-            print("     tts model failed. skipping vocoder stage, returning silence")
+            self.tele.error("     tts model failed. skipping vocoder stage, returning silence")
             mel_lengths = torch.ones(len(batch)) * 256 # just arbitrary number
             # return zeros tensor of expected size        
         #TODO: maybe handle output of failed runs without garbage data (the zeros tensor)
@@ -242,11 +242,11 @@ class Narrator:
 
             waveforms, mel_lengths = self.infer(b)
             ordered_wf += waveforms
-            print("adding pauses")
+            self.tele.print("adding pauses")
             mel_lengths = self.add_pauses(b, mel_lengths, pause_dur=40)
             ordered_mel_lens = torch.cat((ordered_mel_lens, mel_lengths))
 
-        print("recombine")
+        self.tele.print("recombine")
         # turn into array
         # ordered_wf = torch.tensor_split(ordered_wf, len(order), dim=0)
 
@@ -270,7 +270,7 @@ class Narrator:
 
     def save_audio(self, output_wav, waveform):
         torchaudio.save(output_wav, waveform, self.sampling_freq, format="wav")
-        print(f"Audio saved to {output_wav}")
+        self.tele.print(f"Audio saved to {output_wav}")
 
 
 
@@ -308,7 +308,7 @@ class Narrator:
                 file.write(f"{start_time} --> {end_time}\n")
                 file.write(f"{sentence.strip()}\n\n")
 
-        print(f"SRT file saved to {output_file}")
+        self.tele.print(f"SRT file saved to {output_file}")
 
 
     def save_video(self, output_file):
@@ -316,12 +316,12 @@ class Narrator:
 
         import os
 
-        print("\n saving static video")
+        self.tele.print("\n saving static video. executing ffmpeg program:")
         command = f"""
   ffmpeg -y -loop 1 -i output/image.png -i {output_file}.wav 
   -c:v libx264 -tune stillimage -c:a aac -b:a 
   192k -pix_fmt yuv420p -shortest {output_file}.mp4
   """
         command = command.replace("\n", "")
-        print(command)
+        self.tele.print(command)
         os.system(command)

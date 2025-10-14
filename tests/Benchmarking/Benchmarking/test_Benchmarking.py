@@ -1,3 +1,9 @@
+import warnings
+
+# Ignore all FutureWarnings globally
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+
 from Benchmarking.Benchmarking import Bench
 
 from Benchmarking.TTSPipeline import TTSPipeline
@@ -53,10 +59,4 @@ chosengrid = twogrid  # medgrid  # smallgrid  # onegrid #
 
 bench.unfurl_grid(case_template, chosengrid)
 
-print("len(bench.TODOcases):", len(bench.TODOcases))
-
-#bench.TODOcases
 bench.run_experiments()
-
-
-print("bench press done")

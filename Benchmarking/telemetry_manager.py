@@ -9,6 +9,8 @@ from Benchmarking.EpisodeTracker import EpisodeTracker
 from Benchmarking.MemoryMonitor import MemoryMonitor
 import Benchmarking.utils as butils
 import os
+
+import logging
 from copy import deepcopy
 #from algorithms.agent import RLAgent
 
@@ -24,7 +26,8 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
-    
+
+
 class TelemetryManager:
     #TODO: rename to just Telemetry
     #TODO: implement proper logging
@@ -72,6 +75,35 @@ class TelemetryManager:
         #self.algorithm_specific_metrics = dict(list) # For things like TD error, policy change
 
         #self.reset_episode(0)
+
+
+    def intercept_logs(self, LIBRARY_LOGGER_NAME = 'third_party_lib' ):
+        # 1. Get the logger instance for the third-party library
+        #    Replace 'third_party_lib' with the actual name of the library's logger
+        
+        library_logger = logging.getLogger(LIBRARY_LOGGER_NAME)
+
+        # 2. Set the desired logging level 
+        #    The logger will only process events *at or above* this level (e.g., INFO, DEBUG)
+        library_logger.setLevel(logging.INFO) 
+
+       
+        # 3. Create an instance of your custom handler
+        custom_handler = TelemetryManagerHandler(self)
+
+        # Optional: Add a Formatter
+        # This ensures the log message passed to your manager is formatted correctly
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        custom_handler.setFormatter(formatter)
+
+        # 4. Attach the custom handler to the library's logger
+        library_logger.addHandler(custom_handler)
+
+        # 5. Optional: Stop propagation to the root logger
+        #    If the logs are still showing up on the console (because they're being handled 
+        #    by the default 'root' logger), you can stop them from reaching it.
+        library_logger.propagate = False 
+
 
     @property
     def total_episodes(self):
@@ -125,30 +157,37 @@ class TelemetryManager:
 
 
     def print(self, what):
+        #TODO: rename to info
         self._print(what,"info")
 
 
-    def _print(self, what, type = "info"):
+    def Log(self, entry:dict): 
+        self.log.append(entry)
+        self.report(self.dt_format(entry), newline=True)
+
+
+    def _print(self, what, type = 'info', **kwargs):
         #TODO: change this
+
+        time = kwargs["time"] if 'time' in kwargs else self.now()
         entry = {
             "type": type,
-            "time": self.now(),
+            "time": time,
             "message": what,
-        }
-        self.log.append(entry)
-        self.report(self.dt_format(entry))
+            }
+        self.Log(entry)
 
 
     def warning(self, what):
-        self._print(what,"warning")
+        self._print(what, "warning")
 
 
     def error(self, what):
-        self._print(what,"error")
+        self._print(what, type = "error")
 
 
     def debug(self, what):
-        self._print(what,"debug")
+        self._print(what, type = "debug")
 
 
     def dt_format(self, entry: dict):
@@ -299,4 +338,33 @@ class TelemetryManager:
         if self.i_episode in self.samplePoints:            
             msg = f"\r {self.mode} Episode {self.i_episode}/{self.total_episodes}" + message
             self.report(msg)
+
+
+class TelemetryManagerHandler(logging.Handler):
+    """
+    A custom handler that sends log records to a specified manager object.
+    """
+    def __init__(self, manager_object: TelemetryManager):
+        super().__init__()
+        self.manager = manager_object
+
+    def emit(self, record: logging.LogRecord):
+        """
+        Called by the logging system for each log record.
+        """
+
+        # Format the record before passing it to the manager
+        message =  self.format(record)
+
+        entry = {
+            "message" : record.message,
+            "type" : record.levelname.lower(),
+            "time" : record.created,
+            "source": record.name # 'speechbrain.utils.fetching'
+        }
+        # other properties from record can be added
+
+        # Pass the formatted message and/or the raw record to your manager
+        # The exact method call depends on your manager's API
+        self.manager.Log(entry)
 
