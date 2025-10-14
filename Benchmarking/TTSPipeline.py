@@ -58,46 +58,36 @@ class TTSPipeline(Pipeline):
 
 
     def set_telemetry(self, tele: TelemetryManager):
-        level = ""
-        pth = level + ".tracks.resources"
         self.tele = tele
-        self.execute = self.tele.add_memory_monitor(self.execute, {}, pth )
+        pth = ".tracks.resources"
+        conf = get_path(pth, self.case_template())
+        # The MemoryMonitor tracks the memory usage of the whole process.
+        # It is reset on execution of each case
+        # TODO: Then how do we measure mem usage of individual components?
+
+        # at this point case is not yet initialized, so we use default config from case_template
+        self.tele.AttachSensor(self, "execute", pth, config = conf)
 
 
     def init_telemetry(self):
         # re-runs for every new case
+        # TODO: attach monitors for particular pipeline components 
 
-        # self.tele.__init__() #? 
-        # TODO: implement addressing tracks of particular pipeline components 
-        # through jq path, eg: .model_tts.tracks.resources
+        tracks = [
+            ".tracks.episodes"
+            #,".tracks.resources" 
+            #,".tracks.log",
+            #,".model_tts.tracks.log"
+            ] 
 
-        #if new_case["tracks"]["resources"]:
-            # TODO: attach monitors for particular pipeline components 
-        #    self.run_case = self.tele.add_memory_monitor(self.run_case, "" )
+        # TODO: interesting idea: maybe we can use the AttachSensor routine
+        #  to attach to builtin python logger
 
-        # if new_case["tracks"]["log"]:
-        #     self.tele.enable_logging()
+        pth = tracks[0]
+
+        self.tele.AttachSensor(self.narrator, "text_to_speech_df", pth, summary_func = "batch_summary")
 
 
-        # model = new_case["model_voc"]
-        # if model["tracks"]["resources"]:
-        #     # TODO: decide if attach monitor here or at run
-                # actually I don't need to attach this to different models, as the monitor just tracks
-                # the memory usage of the whole process.
-        #     self.vocoder_model.decode_batch = self.tele.add_memory_monitor(self.vocoder_model.decode_batch, "model_voc")
-        level = ""
-
-        ssr = "episodes"
-        pth = level + ".tracks"
-        
-        tmp = get_path(pth, self.current_case)
-        if ssr in tmp:
-            conf = tmp[ssr]
-            lbl = f"{level}.tracks.{ssr}"
-            self.narrator.text_to_speech_df = self.tele.add_EpisodeTracker(
-                self.narrator.text_to_speech_df, self.narrator.batch_summary, conf, lbl)
-
-        self.narrator.telemetry = self.tele
         self.chunker.telemetry = self.tele
 
 

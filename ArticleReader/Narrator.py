@@ -147,7 +147,7 @@ class Narrator:
 
         cols = ["index", "text_len", "seq_len", "durations_sec", "percent_silence"]
         
-        # Horrible implementation 
+        #FIXME: Horrible implementation 
         chunks = batch_df[cols].to_json(orient='records') # df -> json text
         chunks = json.loads(chunks) # json text -> json obj (dict)
         summ = {

@@ -173,10 +173,12 @@ def permutations( grid):
 cidp = ".summary.case_signature"
 
 
-def get_path(pth, templ):
+def get_path(pth, templ, default=None):
     val = jq.compile(f'{pth}?').input(templ).first()
     if val:
         return val
+    elif default is not None:
+        return default
     else:
         raise KeyError(pth)
 

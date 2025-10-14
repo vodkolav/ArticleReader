@@ -147,6 +147,10 @@ class TelemetryManager:
         self._print(what,"error")
 
 
+    def debug(self, what):
+        self._print(what,"debug")
+
+
     def dt_format(self, entry: dict):
         entry['time'] = datetime.fromtimestamp(entry['time'])\
                                 .strftime(self.tstp_format)
@@ -215,6 +219,7 @@ class TelemetryManager:
         self.case = butils.upd_path(".tracks.log.data", self.case, [], force=True)
         # FIXME: fix this ugly hack
         self.case["tracks"]["log"]["data"] = self.log
+        self.log = []
 
 
     def add_memory_monitor(self, func, config: dict, label):
@@ -223,6 +228,38 @@ class TelemetryManager:
         self.sensors[label] = monitor
         return func
 
+
+    def AttachSensor(self, obj, func_name, label, **kwargs):
+        tracks = ".tracks."
+        level, sensor = label.split(tracks)
+        #item = "data"
+        func = getattr(obj, func_name)
+        pth = f"{level}{tracks}{sensor}"
+
+        match sensor:
+            case "episodes": 
+                config = butils.get_path(pth, self.case)
+                snsr = EpisodeTracker(**config)
+                summ_func = getattr(obj, kwargs['summary_func'])
+                func = snsr.attach_to(func, summ_func)
+
+            case "resources": 
+                
+                if "config" in kwargs:
+                    config = kwargs["config"]
+                else:
+                    config = butils.get_path(pth, self.case, default= {})
+
+                snsr = MemoryMonitor(**config)
+                #summ_func = kwargs['summary_func']
+                func = snsr.attach_to(func)
+
+        setattr(obj,func_name, func)
+        snsr.tele = self
+        self.sensors[label] = snsr
+        obj.tele = self
+
+            #case "log":  TODO: decide if me make it a sensor too. or leave it special
 
     def add_EpisodeTracker(self, ep_func, summ_func, config: dict, label):
         trckr = EpisodeTracker(**config)
@@ -235,7 +272,7 @@ class TelemetryManager:
 
         for k,v in self.sensors.items():
             sens_summary = v.summarize()
-            self.case = butils.upd_path(k, self.case, sens_summary)
+            self.case = butils.upd_path(k, self.case, sens_summary, force=True)
 
 
     def end(self):
@@ -252,12 +289,12 @@ class TelemetryManager:
         self.case['summary']["end_time"] = end_timestamp
 
 
-
     def results(self):
         return self.case
 
 
     def progress(self, message = ""):
+        # TODO implement progression percentage of individual cases
         # Optional: Print progress
         if self.i_episode in self.samplePoints:            
             msg = f"\r {self.mode} Episode {self.i_episode}/{self.total_episodes}" + message

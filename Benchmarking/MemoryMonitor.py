@@ -14,7 +14,13 @@ class MemoryMonitor:
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
     """
 
-    def __init__(self, interval_sec: float = 0.1, **kwargs): #, stage, model_id):
+    def __init__(self, sampling_type = "interval_sec", sampling_value = 0.1, **kwargs): #, stage, model_id):
+        
+        if sampling_type != "interval_sec":
+            raise KeyError("Only 'interval_sec' sampling type is supported in MemoryMonitor")
+        
+        self.interval = sampling_value
+
         self.memory_log = []
         self.exception = None
         self.stop_event = threading.Event()
@@ -24,7 +30,7 @@ class MemoryMonitor:
         self.process = psutil.Process(os.getpid())
         self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
-        self.interval = interval_sec
+        self.tele = None
         self.init_rss_mb = self.get_memory_usage_mb()
 
 
@@ -45,7 +51,7 @@ class MemoryMonitor:
                 if os.getpgid(p.pid) == pgid:
                     group.append(p)
             except Exception:
-                print("do we really want to pass? 1")
+                self.tele.debug("do we really want to pass? 1")
                 pass
         return group
     
@@ -87,10 +93,10 @@ class MemoryMonitor:
                             p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
                             #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
                         except Exception:
-                            print("do we really want to Ignore permission errors?")
+                            self.tele.debug("do we really want to Ignore permission errors?")
                             pass  # Ignore permission errors
         except Exception:
-            print("do we really want to Ignore rare process termination errors?")
+            self.tele.debug("do we really want to Ignore rare process termination errors?")
             pass  # Ignore rare process termination errors
         return num_processes, per_process_limit
 
@@ -134,7 +140,7 @@ class MemoryMonitor:
             try:
                 output = forward_func(model, *args, **kwargs)  # Run the original forward pass
             except Exception as e:
-                print("forward_func failed with exc: ", str(e))
+                self.tele.error("forward_func failed with exc: ", str(e))
                 self.exception = str(e)
                 output = None
             # Stop monitoring
