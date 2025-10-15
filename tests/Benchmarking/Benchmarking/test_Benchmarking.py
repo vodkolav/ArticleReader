@@ -34,15 +34,21 @@ twogrid = {  ".meta.chunk_length": [75],
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
              ".meta.device": ["CPU"], 
-             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"],
+             ".data.limit": [[0,6583]]
        }
 
-smallgrid = {".meta.chunk_length": [75,100],
-             ".meta.batch_size": (2, 3),
+# order of parameters in the grid is important! 
+smallgrid = {
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"],
+             ".data.limit": [[0,6583]],
+             ".meta.overrides.max_decoder_steps": [1000,2000],
+             ".meta.device": ["CPU"], 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
-             ".meta.device": ["CPU"], 
-             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+             ".meta.chunk_length": [100,200],
+             #".meta.limit": [[10,20]],
+             ".meta.batch_size": [10,20],
        }
 
 medgrid = {  ".meta.chunk_length": [75, 100, 200],
@@ -63,7 +69,7 @@ largegrid = {".meta.chunk_length": [75, 100, 200, 300, 500, 800],
              ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
 }
 
-chosengrid = twogrid  # medgrid  # smallgrid  # onegrid # 
+chosengrid =  smallgrid  # twogrid  # medgrid  # onegrid # 
 
 bench.unfurl_grid(case_template, chosengrid)
 

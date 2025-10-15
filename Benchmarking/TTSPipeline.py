@@ -31,10 +31,11 @@ class TTSPipeline(Pipeline):
         # If a parameter changes, all downstream initializers must re-run.
         # * since Python 3.7 dicts preserve insertion order
         self.initializers = {
+                ".data.test_data": self.init_preprocess,            
                 ".meta.device": self.init_device,
+                ".meta.overrides.max_decoder_steps": self.init_overrides,
                 ".model_tts.name": self.init_tts_model,
                 ".model_voc.name": self.init_voc_model,
-                ".data.test_data": self.init_preprocess,
                 ".meta.chunk_length": self.init_chunker,
                 ".meta.limit": self.init_limit,
                 ".meta.batch_size": self.init_batch,
@@ -95,17 +96,19 @@ class TTSPipeline(Pipeline):
     def init_preprocess(self, new_case):
 
         input_file = new_case["data"]["test_data"]
+        data_limit = new_case["data"].get("limit",{})
 
         parser = LatexParser()
         content = parser.read_latex(input_file)
         self.preprocessed_text = parser.custom_latex_to_text(content)
+        if data_limit:
+            self.preprocessed_text = self.preprocessed_text[slice(*data_limit)]
         self.tables = parser.get_tables()
-
 
             # save debug info
         # tstp = datetime.now().strftime(r"%y.%m.%d-%H.%M.%S")
         # dbg_dir = "dbg/" + tstp
-        # parser.save_text(self.preprocessed_text, "dbg/postprocessed.txt")
+        parser.save_text(self.preprocessed_text, self.case_file + ".txt")
         # parser.save_text(self.tables, "dbg/tables.tex")
 
 
@@ -138,6 +141,8 @@ class TTSPipeline(Pipeline):
 
         #self.chunks = self.chunker.get_chunks_sorted(batch_size, fr)
 
+    def init_overrides(self, new_case):
+        pass
 
     def init_voc_model(self, new_case ):
         model = new_case["model_voc"]
@@ -149,7 +154,7 @@ class TTSPipeline(Pipeline):
                         savedir=f"{self.checkpoints_dir}/{voc_model_name}",
                         run_opts={"device":self.device}
                         )
-        self.vocoder_model.id = voc_model_name
+        #self.vocoder_model.id = voc_model_name
 
 
     def init_device(self, new_case):
@@ -160,7 +165,7 @@ class TTSPipeline(Pipeline):
         model = new_case["model_tts"]
         tts_model_name = model["name"]
         provider = model["provider"]
-        overrides = model.get("overrides", {})
+        overrides = model.get("overrides", None)
 
         self.tts_model = Tacotron2.from_hparams(
                     source=f"{provider}/{tts_model_name}",
@@ -170,7 +175,7 @@ class TTSPipeline(Pipeline):
                     )
         
         # TODO: still need this?
-        self.tts_model.id = tts_model_name
+        #self.tts_model.id = tts_model_name
 
 
     def case_template(self):

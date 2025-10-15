@@ -43,7 +43,8 @@ class Bench:
             # 
         else:
             # create new experiment folder
-            self.experiment_id = datetime.now().strftime("%Y%m%d-%H%M")
+            s = os.path.sep
+            self.experiment_id = datetime.now().strftime(f"%Y%m%d{s}%H%M")
             self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # Ensure results directory exists
             self.TELE.print(f" creating new experiment in {self.folder}.")
@@ -52,6 +53,9 @@ class Bench:
             self.DONEcases = []
         
         self.TELE.start(self.config)
+
+        self.delamination = False
+        self.test_recombination = False
 
 
     def config_template(self):
@@ -184,17 +188,21 @@ class Bench:
         self.TELE.print("benchmark run complete!")
 
 
-    def save_case(self, experiment_run, test_recombination = True):
+    def save_case(self, experiment_run):
         case_id = experiment_run['summary']["case_id"]
-        coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)
-        self.write_config(coarse_data, f"{case_id}.coarse")
-        self.write_config(fine_data, f"{case_id}.fine")
+        if self.delamination:
 
-        if test_recombination:
-            self.test_recombination(experiment_run, coarse_data, fine_data, case_id)
+            coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)
+            self.write_config(coarse_data, f"{case_id}.coarse")
+            self.write_config(fine_data, f"{case_id}.fine")
+
+            if self.test_recombination:
+                self.test_recomb(experiment_run, coarse_data, fine_data, case_id)
+        else: 
+            self.write_config(experiment_run, f"{case_id}")
 
 
-    def test_recombination(self, original, coarse_data, fine_data, case_id):
+    def test_recomb(self, original, coarse_data, fine_data, case_id):
 
         recombined = recombine(coarse_data, fine_data, self.pipeline.delamination_spec)
         if  recombined == original:

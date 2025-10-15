@@ -189,7 +189,7 @@ class RLPileline(Pipeline):
             self.run_episode(i_episode) # No rendering during training usually
             self.telemetry.progress()
             if self.agent.terminate_prematurely:
-                self.telemetry.report("Algorithm decided to terminate prematurely.")
+                self.telemetry.display("Algorithm decided to terminate prematurely.")
                 break
 
 
@@ -229,7 +229,7 @@ class RLPileline(Pipeline):
 
         self.train_algorithm(train_episodes)
 
-        self.telemetry.report("\nTraining done.", newline=True)
+        self.telemetry.display("\nTraining done.", newline=True)
 
         # --- Optional: Evaluate the trained algorithm ---
         self.evaluate_algorithm(eval_episodes, train_episodes+1)

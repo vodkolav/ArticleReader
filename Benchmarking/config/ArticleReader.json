@@ -4,6 +4,7 @@
     "device": "CPU",
     "chunk_length": 320,
     "batch_size": 125,
+    "overrides": {"max_decoder_steps": 2000},
     "limit": [
       20,
       25

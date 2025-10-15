@@ -145,7 +145,7 @@ class Narrator:
         durations = batch_df.durations_sec
         batch_df["percent_silence"] = 1 - durations/max(durations)
 
-        cols = ["index", "text_len", "seq_len", "durations_sec", "percent_silence"]
+        cols = ["index", "text_len", "seq_len", "mel_lengths", "durations_sec", "percent_silence"]
         
         #FIXME: Horrible implementation 
         chunks = batch_df[cols].to_json(orient='records') # df -> json text

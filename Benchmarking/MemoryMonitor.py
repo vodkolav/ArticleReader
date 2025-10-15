@@ -112,8 +112,8 @@ class MemoryMonitor:
             # here we can add other parameters if need be
             self.memory_log.append({"time": time.time(),
                                     #"memory": RSS,
-                                    "RSS_mb": RSS,
-                                    "VMS_mb": VMS,
+                                    "RSS_b": RSS,
+                                    "VMS_b": VMS,
                                     "processes": num_processes,
                                     "num_threads": self.process.num_threads(),
                                     "per_process_limit":per_process_limit,

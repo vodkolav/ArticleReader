@@ -163,7 +163,7 @@ class TelemetryManager:
 
     def Log(self, entry:dict): 
         self.log.append(entry)
-        self.report(self.dt_format(entry), newline=True)
+        self.display(self.format_entry(entry), newline=True)
 
 
     def _print(self, what, type = 'info', **kwargs):
@@ -190,11 +190,11 @@ class TelemetryManager:
         self._print(what, type = "debug")
 
 
-    def dt_format(self, entry: dict):
-        entry['time'] = datetime.fromtimestamp(entry['time'])\
-                                .strftime(self.tstp_format)
-        disp = "[{type}] {time}: {message}"
-        return disp.format(**entry)
+    def format_entry(self, entry: dict):
+        newentry = entry.copy()
+        newentry['timestamp'] = self.timestamp(newentry['time'])
+        disp = "[{type}] {timestamp}: {message}"
+        return disp.format(**newentry)
 
 
     def timestamp(self, entry = None):
@@ -205,7 +205,7 @@ class TelemetryManager:
             return self.timestamp(self.now())
 
 
-    def report(self, what, newline = False) -> None:
+    def display(self, what, newline = False) -> None:
         if newline:
             print(what)
         else:
@@ -337,7 +337,7 @@ class TelemetryManager:
         # Optional: Print progress
         if self.i_episode in self.samplePoints:            
             msg = f"\r {self.mode} Episode {self.i_episode}/{self.total_episodes}" + message
-            self.report(msg)
+            self.display(msg)
 
 
 class TelemetryManagerHandler(logging.Handler):

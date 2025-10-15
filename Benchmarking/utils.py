@@ -112,7 +112,7 @@ def arr_merge(coarse, fine, key, deep_map):
 
 
 def deep_merge(coarse_data: Dict[str, Any], fine_data: Dict[str, Any], deep_map: Dict[str, str]) -> Dict[str, Any]:
-    
+    # TODO: add option inplace=False, where output is new object and coarse_data remains the same
     for path, chld in deep_map.items():
 
         field, key, typ = classify(path, chld)
