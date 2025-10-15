@@ -114,8 +114,7 @@ class Bench:
 
         self.TODOcases = [c for c in self.TODOcases if not filter_out_key("summary", c) in doneconfigs]
 
-        self.TELE.print("\nOut of %d submitted cases,\n  %d cases are already done.\n  %d are new and will be run. ", 
-                    subm, len(doneconfigs), len(self.TODOcases))
+        self.TELE.print(f"\nOut of {subm} submitted cases,\n  {len(doneconfigs)} cases are already done.\n  {len(self.TODOcases)} are new and will be run. ")
 
         # write_json(self.TODOcases, "todo_cases.json", sort_keys=True)
         # write_json(self.DONEcases, "done_cases.json", sort_keys=True)
@@ -132,8 +131,8 @@ class Bench:
             self.TELE.print(f"No existing cases found in {self.folder} matching {patt}.")
             return []
         
-        self.TELE.print(f"loading {len(paths)} files from:", pth.absolute())
-        self.TELE.print(str(paths[0]), "...", sep = "\n")
+        self.TELE.print(f"loading {len(paths)} files from:" + str( pth.absolute()))
+        #self.TELE.print(str(paths[0]), "...", sep = "\n")
 
         cases = []
         for i,p in enumerate(paths):
@@ -180,6 +179,7 @@ class Bench:
 
         self.TELE.end()
         run_results = self.TELE.results()
+        #TODO:dump the bench TELE to disk after every case - for backup
         self.write_config(run_results, "experiment")
         self.TELE.print("benchmark run complete!")
 

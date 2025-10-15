@@ -187,8 +187,8 @@ class Narrator:
 
     def infer(self, batch):
         # incoming: batch of chunks (~sentences)
+        self.tele.print("     actual batch size: " +  str(len(batch)))       
         self.tele.print("     running TTS model")
-        self.tele.print("     actual batch size: " +  str(len(batch)))
         #self.tele.print("self.tts.hparams.max_decoder_steps:"+  str(self.tts.hparams.max_decoder_steps ))
         output = self.tts.encode_batch(batch)
         

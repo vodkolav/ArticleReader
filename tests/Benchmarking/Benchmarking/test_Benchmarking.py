@@ -54,6 +54,14 @@ medgrid = {  ".meta.chunk_length": [75, 100, 200],
              ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
 }
 
+largegrid = {".meta.chunk_length": [75, 100, 200, 300, 500, 800],
+             ".meta.batch_size": [10, 20, 30, 50],
+             ".meta.limit": [[0,300]], 
+             ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_voc.name": ["tts-hifigan-ljspeech"],
+             ".meta.device": ["CPU"], 
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+}
 
 chosengrid = twogrid  # medgrid  # smallgrid  # onegrid # 
 
