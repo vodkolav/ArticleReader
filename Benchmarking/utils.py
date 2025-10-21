@@ -184,7 +184,11 @@ def get_path(pth, templ, default=None):
 
 
 def qua(val):
-    if isinstance(val, str):
+    if val == [None,None]:
+        #handle empty ranges, such as chunks_limit
+        #TODO:this is ugly, make it more robust
+        val = '[null,null]'
+    elif isinstance(val, str):
         val = val.strip('"')
         val = f'"{val}"'
     elif isinstance(val, dict):
@@ -192,8 +196,12 @@ def qua(val):
     return val
 
 
-def filter_out_key(key, templ):
-    jqq = f'del(..| .{key}?)'
+def filter_out_keys(templ, *args):
+    #deletes all occurences of key(s) from the templ recursively.
+    #careful with it
+    keys = [f".{key}?" for key in args]
+    keys = ", ".join(keys)
+    jqq = f'del(..| {keys})'
     return jq.compile(jqq).input(templ).first() 
 
 

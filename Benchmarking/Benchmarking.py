@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
-from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_key
+from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
 from Benchmarking.telemetry_manager import TelemetryManager
 import logging
 
@@ -100,10 +100,9 @@ class Bench:
         """
         self.grid = grid
         self.TODOcases = span_grid(grid, case_template)
+        self.TELE.print(f"Unfurled grid into {len(self.TODOcases)} TODOcases")
 
         self.check_existing()
-
-        self.TELE.print(f"Unfurled grid into {len(self.TODOcases)} TODOcases")
 
         #TODO: allow to add multiple grids for "or" combinations
 
@@ -112,11 +111,11 @@ class Bench:
         # check if some cases already done and filter them out of TODOcases
         if not self.DONEcases:
             return False
-        doneconfigs = filter_out_key("summary", self.DONEcases)
+        doneconfigs = filter_out_keys(self.DONEcases, "summary", "tracks")
 
         subm = len(self.TODOcases)
 
-        self.TODOcases = [c for c in self.TODOcases if not filter_out_key("summary", c) in doneconfigs]
+        self.TODOcases = [c for c in self.TODOcases if not filter_out_keys(c, "summary", "tracks") in doneconfigs]
 
         self.TELE.print(f"\nOut of {subm} submitted cases,\n  {len(doneconfigs)} cases are already done.\n  {len(self.TODOcases)} are new and will be run. ")
 
@@ -125,7 +124,7 @@ class Bench:
         # write_json(doneconfigs, "doneconfigs.json", sort_keys=True)
 
 
-    def load_cases(self, patt = "*.coarse"):
+    def load_cases(self, patt = "2025*"):
 
         pth = Path(self.folder)
         
@@ -158,9 +157,14 @@ class Bench:
         return caSe
 
 
-    def write_config(self, caSe, filename, sort_keys = False):
+    def write_config(self, caSe, filename, sort_keys = False, mode = 'x'):
         config_filepath = os.path.join(self.folder , f"{filename}.json")
-        write_json(caSe, config_filepath, sort_keys=sort_keys, mode = 'x')
+        write_json(caSe, config_filepath, sort_keys=sort_keys, mode = mode)
+
+
+    def addresil(self, new_case):
+        if 'tracks' in new_case:
+            new_case['tracks']['resources']['resilient'] = "dbg/" 
 
 
     def run_experiments(self, force = False):
@@ -170,26 +174,31 @@ class Bench:
         for i, config in enumerate(self.TODOcases):
             config['summary']["experiment_id"] = self.experiment_id
             config['summary']["output_root"] = self.output_root
+            config['summary']["case_index"] = i
+            self.addresil(config)
             status = self.pipeline.execute(config)
             if status != "Ok":
                 self.TELE.error("fatal error in run_case. aborting")
                 return
                 # TODO: make it graceful
                 # TODO: move from TODOcases to DONEcases
-
-            self.TELE.print("saving benchmark data")
+            
             experiment_run =self.pipeline.results()
             self.save_case(experiment_run)
+            
+            #dump the TELE of the bench to disk after every case - 
+            #otherwise if run fails at some case, the whole bench log is lost
+            self.TELE.collect_log()
+            self.write_config(self.TELE.results(), "experiment", mode='w+')
 
-        self.TELE.end()
-        run_results = self.TELE.results()
-        #TODO:dump the bench TELE to disk after every case - for backup
-        self.write_config(run_results, "experiment")
-        self.TELE.print("benchmark run complete!")
+        self.TELE.print("Benchmark run complete!")
+        self.TELE.end()       
+        self.write_config(self.TELE.results(), "experiment", mode='w+')
 
 
     def save_case(self, experiment_run):
         case_id = experiment_run['summary']["case_id"]
+        self.TELE.print(f"saving benchmark data to: {case_id}.json")
         if self.delamination:
 
             coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)

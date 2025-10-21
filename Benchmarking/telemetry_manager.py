@@ -7,6 +7,7 @@ import time
 
 from Benchmarking.EpisodeTracker import EpisodeTracker
 from Benchmarking.MemoryMonitor import MemoryMonitor
+from Benchmarking.MemoryProfiler import MemoryProfiler
 import Benchmarking.utils as butils
 import os
 
@@ -257,8 +258,7 @@ class TelemetryManager:
     def collect_log(self):
         self.case = butils.upd_path(".tracks.log.data", self.case, [], force=True)
         # FIXME: fix this ugly hack
-        self.case["tracks"]["log"]["data"] = self.log
-        self.log = []
+        self.case["tracks"]["log"]["data"] = self.log        
 
 
     def add_memory_monitor(self, func, config: dict, label):
@@ -293,10 +293,20 @@ class TelemetryManager:
                 #summ_func = kwargs['summary_func']
                 func = snsr.attach_to(func)
 
+            case "profile": 
+                if  label in self.sensors:
+                    snsr = self.sensors[label]
+                else:                        
+                    if "config" in kwargs:
+                        config = kwargs["config"]
+                    else:
+                        config = butils.get_path(pth, self.case, default= {})
+                    snsr = MemoryProfiler(**config)
+                func = snsr.attach_to(func)
+
         setattr(obj,func_name, func)
         snsr.tele = self
-        self.sensors[label] = snsr
-        obj.tele = self
+        self.sensors[label] = snsr        
 
             #case "log":  TODO: decide if me make it a sensor too. or leave it special
 
@@ -309,10 +319,26 @@ class TelemetryManager:
 
     def collect_sensors(self):
 
-        for k,v in self.sensors.items():
-            sens_summary = v.summarize()
+        for k,v in self.sensors.items():            
+            sens_summary = deepcopy(v.summarize())            
+            if "profile" in k and sens_summary['data']!=[]:
+                self.save_other(sens_summary)
+
             self.case = butils.upd_path(k, self.case, sens_summary, force=True)
 
+
+    def save_other(self,v):
+        #TODO:temporary hack, shold be intergrated into resilient monitor
+        data = v["data"]
+        cid = self.case["summary"]["case_id"]
+        pth = f"dbg/{cid}"
+        os.makedirs(pth, exist_ok=True)      
+
+        for prof in data:
+            id = prof["id"]
+            fnm = prof["function_name"]
+            with open(pth + f"/{fnm}_{id}.prof", "w+") as fl:
+                fl.write(prof["profile_log"])
 
     def end(self):
         # Optional: Print end message
@@ -322,14 +348,13 @@ class TelemetryManager:
         #nm = self.summary["experiment_id"]
         #self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
-
+        self.log = []
         # create a report
-        end_timestamp = self.now()
-        self.case['summary']["end_time"] = end_timestamp
+        self.case['summary']["end_time"] = self.now()
 
 
     def results(self):
-        return self.case
+        return deepcopy(self.case)
 
 
     def progress(self, message = ""):
@@ -354,7 +379,7 @@ class TelemetryManagerHandler(logging.Handler):
         """
 
         # Format the record before passing it to the manager
-        message =  self.format(record)
+        #message =  self.format(record)
 
         entry = {
             "message" : record.message,

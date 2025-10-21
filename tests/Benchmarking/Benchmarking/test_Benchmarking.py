@@ -8,20 +8,10 @@ from Benchmarking.Benchmarking import Bench
 
 from Benchmarking.TTSPipeline import TTSPipeline
 
-ttsppl = TTSPipeline()
-
-case_template = ttsppl.case_template()
-
-#bench = Bench(folder="20251010-1822") # open existing folder
-
-bench = Bench() # create new folder
-
-
-bench.configure(ttsppl)
 
 onegrid = {  ".meta.chunk_length": [75],
              ".meta.batch_size": [2],
-            # "meta.limit": [20,30], probably will try to grid-expand it 
+            # "meta.chunks_limit": [20,30], probably will try to grid-expand it 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
              ".meta.device": ["CPU"], 
@@ -30,7 +20,7 @@ onegrid = {  ".meta.chunk_length": [75],
 
 twogrid = {  ".meta.chunk_length": [75],
              ".meta.batch_size": [2,3],
-             ".meta.limit": [[20,35]], 
+             ".meta.chunks_limit": [[20,35]], 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
              ".meta.device": ["CPU"], 
@@ -42,34 +32,49 @@ twogrid = {  ".meta.chunk_length": [75],
 smallgrid = {
              ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"],
              ".data.limit": [[0,6583]],
-             ".meta.overrides.max_decoder_steps": [1000,2000],
+             ".meta.overrides.max_decoder_steps": [1000],
              ".meta.device": ["CPU"], 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
              ".meta.chunk_length": [100,200],
-             #".meta.limit": [[10,20]],
+             ".meta.chunks_limit": [[10, 20 ]],
              ".meta.batch_size": [10,20],
        }
 
-medgrid = {  ".meta.chunk_length": [75, 100, 200],
-             ".meta.batch_size": [10, 20, 30],
-             ".meta.limit": [[20,300]], 
+medgrid = {  
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"],
+             ".data.limit": [[0,6583]],
+             ".meta.device": ["CPU"],                 
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_tts.overrides.max_decoder_steps": [500],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
-             ".meta.device": ["CPU"], 
-             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
+             ".meta.chunks_limit": [[20,50]],          
+             ".meta.chunk_length": [75, 100, 200],
+             ".meta.batch_size": [10, 20, 30],             
 }
 
-largegrid = {".meta.chunk_length": [75, 100, 200, 300, 500, 800],
-             ".meta.batch_size": [10, 20, 30, 50],
-             ".meta.limit": [[0,300]], 
+largegrid = {
+             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"],
+             ".data.limit": [[0,6583]],
+             ".meta.device": ["CPU"],              
              ".model_tts.name": ["tts-tacotron2-ljspeech"],
+             ".model_tts.overrides.max_decoder_steps": [500, 1000, 2000],
              ".model_voc.name": ["tts-hifigan-ljspeech"],
-             ".meta.device": ["CPU"], 
-             ".data.test_data": ["data/arXiv-2106.04624v1/main.tex"]
-}
+             ".meta.chunk_length": [75, 100, 200, 300, 500, 800, 1000],
+             ".meta.chunks_limit": [[None,None]],
+             ".meta.batch_size": [10, 20, 30, 50, 70, 100],
+       }
 
-chosengrid =  smallgrid  # twogrid  # medgrid  # onegrid # 
+ttsppl = TTSPipeline()
+
+case_template = ttsppl.case_template()
+
+#bench = Bench(folder="20251019/1849") # open existing folder
+bench = Bench() # create new folder
+
+bench.configure(ttsppl)
+
+chosengrid = medgrid #largegrid #  smallgrid  # twogrid    # onegrid # 
 
 bench.unfurl_grid(case_template, chosengrid)
 

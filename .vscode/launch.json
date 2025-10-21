@@ -6,14 +6,26 @@
     "configurations": [
         {
             "name": "debug test",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/tests/Benchmarking/Benchmarking/test_Benchmarking.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}",
-            }
+            },
+        },        
+        {
+            "name": "NOdebug test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/Benchmarking/Benchmarking/test_Benchmarking.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+            },
+            "noDebug": true
         },
         {
             "name": "Python: Current File",

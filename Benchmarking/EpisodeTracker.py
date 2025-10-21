@@ -123,8 +123,8 @@ class EpisodeTracker:
             finally:
                 if allowed:
                     data = summary_func(*args, **kwargs)
-                    self.record.update(deepcopy(data))
-                    self.episodes.append(self.record)
+                    self.record.update(data)
+                    self.episodes.append(deepcopy(self.record))
                     self.record = {}
                     allowed = False
 

@@ -137,6 +137,7 @@ class Chunker:
         return [r for r in res if len(r) > 3]
 
     def split_text_into_chunks(self, text):
+        self.tele.print("splitting text into chunks")
         ## temporary hack for citation shit
         text = re.sub(" ([\\.,])", r"\g<1>", text)
 
@@ -144,8 +145,7 @@ class Chunker:
         # text = text.replace("i.e.,", r"that is")
         # text = text.replace("e.g.,", r"for example")
         text = text.replace("cf.", r"confer")
-
-        # print(text)
+       
 
         self.chunks = self.breakByParagraphs(text)
         
