@@ -33,11 +33,11 @@ class TTSPipeline(Pipeline):
         self.initializers = {
                 ".data.test_data": self.init_preprocess,            
                 ".meta.device": self.init_device,
-                ".meta.overrides.max_decoder_steps": self.init_overrides,
                 ".model_tts.name": self.init_tts_model,
+                ".model_tts.overrides.max_decoder_steps": self.init_overrides,
                 ".model_voc.name": self.init_voc_model,
                 ".meta.chunk_length": self.init_chunker,
-                ".meta.limit": self.init_limit,
+                ".meta.chunks_limit": self.init_limit,
                 ".meta.batch_size": self.init_batch,
             }
         
@@ -61,12 +61,21 @@ class TTSPipeline(Pipeline):
     def set_telemetry(self, tele: TelemetryManager):
         self.tele = tele
         self.tele.intercept_logs("speechbrain")
-        pth = ".tracks.resources"
-        conf = get_path(pth, self.case_template())
         # The MemoryMonitor tracks the memory usage of the whole process.
         # It is reset on execution of each case
         # TODO: Then how do we measure mem usage of individual components?
 
+
+
+        pth = ".tracks.profile"
+        conf = get_path(pth, self.case_template())
+        self.tele.AttachSensor(self, "init_case", pth, config = conf)
+        self.tele.AttachSensor(self, "run_case", pth, config = conf)
+        self.tele.AttachSensor(self, "execute", pth, config = conf)
+
+
+        pth = ".tracks.resources"
+        conf = get_path(pth, self.case_template())
         # at this point case is not yet initialized, so we use default config from case_template
         self.tele.AttachSensor(self, "execute", pth, config = conf)
 
@@ -76,7 +85,8 @@ class TTSPipeline(Pipeline):
         # TODO: attach monitors for particular pipeline components 
 
         tracks = [
-            ".tracks.episodes"
+            ".tracks.episodes",
+            #".tracks.profile"
             #,".tracks.resources" 
             #,".tracks.log",
             #,".model_tts.tracks.log"
@@ -86,18 +96,14 @@ class TTSPipeline(Pipeline):
         #  to attach to builtin python logger
 
         pth = tracks[0]
-
         self.tele.AttachSensor(self.narrator, "text_to_speech_df", pth, summary_func = "batch_summary")
-
-
-        self.chunker.telemetry = self.tele
 
 
     def init_preprocess(self, new_case):
 
         input_file = new_case["data"]["test_data"]
         data_limit = new_case["data"].get("limit",{})
-
+        self.tele.print("parsing LaTeX to narratable text... why its taking so long?")
         parser = LatexParser()
         content = parser.read_latex(input_file)
         self.preprocessed_text = parser.custom_latex_to_text(content)
@@ -117,11 +123,12 @@ class TTSPipeline(Pipeline):
         chunk_length = new_case["meta"]["chunk_length"]
 
         self.chunker = Chunker(max_len=chunk_length)
+        self.chunker.telemetry = self.tele
         self.chunker.split_text_into_chunks(self.preprocessed_text)
 
 
     def init_limit(self, new_case):
-        lim = new_case["meta"].get("limit",None)
+        lim = new_case["meta"].get("chunks_limit",None)
         if lim:
             a, b = lim
             self.tele.print(f"limited to chunks {a} to {b}")
@@ -135,13 +142,16 @@ class TTSPipeline(Pipeline):
 
 
         self.narrator = Narrator(self.tts_model, self.vocoder_model)
-                
+        self.narrator.tele = self.tele
         # TODO implement: 
         #fr = 0 # beginning from chunk
 
         #self.chunks = self.chunker.get_chunks_sorted(batch_size, fr)
 
     def init_overrides(self, new_case):
+        #the only override used currently is max_decoder_steps
+        #and it is used during tts_model init.
+        #still, this function is required  to trigger the change of this parameter 
         pass
 
     def init_voc_model(self, new_case ):
@@ -180,6 +190,10 @@ class TTSPipeline(Pipeline):
 
     def case_template(self):
         # /home/michael/Projects/ArticleReader/
+        #TODO:add more settings:
+        # timestamp formats
+        # timezone of all times
+        
         fl = "Benchmarking/config/ArticleReader.json"
         with open(fl, 'r') as f:
             template = json.load(f)
@@ -267,14 +281,15 @@ class TTSPipeline(Pipeline):
         try:
             #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
             #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
-
+            
             self.init_case(new_case)
             self.init_telemetry()
             self.run_case()
             self.close_case()
 
         except Exception as e:
-            print('what')
+            cid = self.tele.case['summary']["case_id"]
+            self.tele.error("Error excuting case", cid, ":", e)
             return "Error"
 
         return "Ok"

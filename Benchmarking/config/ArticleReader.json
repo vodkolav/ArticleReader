@@ -4,8 +4,7 @@
     "device": "CPU",
     "chunk_length": 320,
     "batch_size": 125,
-    "overrides": {"max_decoder_steps": 2000},
-    "limit": [
+    "chunks_limit": [
       20,
       25
     ]
@@ -18,18 +17,13 @@
     "class": "Tacotron2",
     "provider": "speechbrain",
     "stage": "tts",
-    "overrides": {
-      "max_decoder_steps": 2000
-    }
+    "overrides": {"max_decoder_steps": 2000}
   },
   "model_voc": {
     "name": "tts-hifigan-ljspeech",
     "class": "HIFIGAN",
     "provider": "speechbrain",
-    "stage": "vocoder",
-    "overrides": {
-      "max_decoder_steps": 2000
-    }
+    "stage": "vocoder"
   },
   "tracks": {
     "episodes": {
@@ -43,6 +37,10 @@
     "resources": {
       "sampling_type": "interval_sec",
       "sampling_value": 0.1
+    },
+    "profile": {
+      "sampling_type": "interval_episodes",
+      "sampling_value": 1
     }
   }
 }
