@@ -294,3 +294,18 @@ def write_json(caSe, filepath, sort_keys = False, mode = 'w'):
     except json.JSONDecodeError:
         print(f"Error: Invalid JSON in {filepath}")
         return
+
+
+def isDebugging():
+       import sys
+       gettrace = getattr(sys, 'gettrace', None)
+
+       if gettrace is None:
+              print('No sys.gettrace')
+              return False
+       elif gettrace():
+              print('Hmm, Big Debugger is watching me')
+              return True
+       else:
+              print("Running in NOdebug mode")
+              return False

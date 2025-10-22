@@ -33,9 +33,9 @@ class TTSPipeline(Pipeline):
         self.initializers = {
                 ".data.test_data": self.init_preprocess,            
                 ".meta.device": self.init_device,
-                ".model_tts.name": self.init_tts_model,
-                ".model_tts.overrides.max_decoder_steps": self.init_overrides,
                 ".model_voc.name": self.init_voc_model,
+                ".model_tts.overrides.max_decoder_steps": self.init_overrides,
+                ".model_tts.name": self.init_tts_model,
                 ".meta.chunk_length": self.init_chunker,
                 ".meta.chunks_limit": self.init_limit,
                 ".meta.batch_size": self.init_batch,
@@ -152,6 +152,8 @@ class TTSPipeline(Pipeline):
         #the only override used currently is max_decoder_steps
         #and it is used during tts_model init.
         #still, this function is required  to trigger the change of this parameter 
+        #TODO: validate that it runs BEFORE init_tts_model
+        print("oh really?")
         pass
 
     def init_voc_model(self, new_case ):
@@ -289,7 +291,8 @@ class TTSPipeline(Pipeline):
 
         except Exception as e:
             cid = self.tele.case['summary']["case_id"]
-            self.tele.error("Error excuting case", cid, ":", e)
+            msg = "".join(["Error excuting case", cid, ":", str(e)])            
+            self.tele.error(msg)
             return "Error"
 
         return "Ok"

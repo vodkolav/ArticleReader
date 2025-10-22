@@ -129,8 +129,6 @@ class MemoryMonitor:
             return {"exception":1}
 
 
-
-
     def monitor_cpu_memory(self):
         while not self.stop_event.is_set():
             #all_processes = self.process.children(recursive=True) + [self.process]

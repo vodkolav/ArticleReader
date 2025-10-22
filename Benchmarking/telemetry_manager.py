@@ -379,8 +379,10 @@ class TelemetryManagerHandler(logging.Handler):
         """
 
         # Format the record before passing it to the manager
-        #message =  self.format(record)
-
+        message =  self.format(record)
+        # dont remove - it's the line that creates record.message
+        # TODO: make it proper
+        
         entry = {
             "message" : record.message,
             "type" : record.levelname.lower(),
