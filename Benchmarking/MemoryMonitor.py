@@ -1,4 +1,3 @@
-import pandas as pd
 import psutil
 
 
@@ -27,7 +26,7 @@ class MemoryMonitor:
         # self.stage = stage
         # self.model_id = model_id
         self.process = psutil.Process(os.getpid())
-        #self.memory_limit_bytes = self.get_free_memory_bytes()*1.2 #20000 # 40000
+        self.memory_limit = int(psutil.virtual_memory().total *0.9) #self.get_free_memory_bytes()*1.2 #20000 # 40000
         self.last_process_count = 0
         self.tele = None
         #self.init_rss_mb = self.get_memory_usage_mb()
@@ -80,30 +79,34 @@ class MemoryMonitor:
     #         snpsh.append(snp)
     #     return snpsh
 
-    def set_memory_limit(self, all_processes):
+    def set_memory_limit(self, mem_info, thresh = 0.8):
         """Estimate process count and apply memory limits only if needed."""
-
-        num_processes = max(1, len(all_processes))
-        per_process_limit = (self.memory_limit_bytes // num_processes)
+        
+        vms = mem_info["vms"]
+        available = mem_info["free_memory"]
+        total_memory = mem_info["total_memory"]
 
         try:
             # Check process count every 5 seconds and adjust if needed
-            if len(self.memory_log) % int(5 / self.interval) == 0:
+            #if available < 0.1 * total_memory :
+            if (vms + available)/total_memory > 0.75:
+            #len(self.memory_log) % int(5 / self.interval) == 0:
+                new_limit = int(min((vms + available), total_memory*thresh))
+                diff = abs(new_limit - self.memory_limit) / max(1, self.memory_limit)
+                if diff > 0.08:
+                    try:
+                        self.memory_limit = new_limit
+                        self.tele.print("Setting memory limit to ", self.memory_limit)
+                        resource.setrlimit(resource.RLIMIT_AS, (self.memory_limit, resource.RLIM_INFINITY))
+                    except Exception as e:
+                        self.tele.debug(e)
+                        pass  # Ignore permission errors
 
-                # Update limits only if the number of processes has changed significantly
-                if abs(num_processes - self.last_process_count) / max(1, self.last_process_count) > 0.2:
-                    self.last_process_count = num_processes
-                    for p in all_processes:
-                        try:
-                            p.rlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                            #resource.setrlimit(resource.RLIMIT_AS, (per_process_limit, resource.RLIM_INFINITY))
-                        except Exception:
-                            self.tele.debug("do we really want to Ignore permission errors?")
-                            pass  # Ignore permission errors
-        except Exception:
-            self.tele.debug("do we really want to Ignore rare process termination errors?")
+            mem_info["memory_limit"] = self.memory_limit
+        except Exception as e :
+            self.tele.debug(e)
             pass  # Ignore rare process termination errors
-        return num_processes, per_process_limit
+        return mem_info
 
 
     def ask_process(self, process: psutil.Process):
@@ -148,6 +151,9 @@ class MemoryMonitor:
             mem_info["free_memory"] = psutil.virtual_memory().available
             mem_info["time"] = tstp
             mem_info["num_processes"] = len(self.process.children())+1
+
+            mem_info = self.set_memory_limit(mem_info)
+
             # here we can add other parameters if need be
             self.resil.write(mem_info)
             self.memory_log.append(mem_info)
@@ -235,7 +241,7 @@ class ResilientMonitor:
     #if a process suddenly terminated, the data logged by it is not lost.
 
     def __init__(self, host ):
-        self.online = 0        
+        self.online = 0    
         self.host = host    
 
 
