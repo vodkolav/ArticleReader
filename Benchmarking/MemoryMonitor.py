@@ -5,7 +5,7 @@ import psutil
 import os
 import resource
 import threading
-import time
+from Benchmarking.timeutils import Time as T
 
 class MemoryMonitor:
     """
@@ -32,7 +32,7 @@ class MemoryMonitor:
         self.tele = None
         #self.init_rss_mb = self.get_memory_usage_mb()
         
-        self.resil = ResilientMonitor(**kwargs)
+        self.resil = ResilientMonitor(self, **kwargs)
 
     # def get_free_memory_bytes(self):
     #     with open('/proc/meminfo', 'r') as mem:
@@ -133,7 +133,7 @@ class MemoryMonitor:
         while not self.stop_event.is_set():
             #all_processes = self.process.children(recursive=True) + [self.process]
 
-            # num_processes, per_process_limit = self.set_memory_limit(all_processes)
+            tstp = T.now()
 
             mem_info = self.ask_process(self.process)
 
@@ -146,7 +146,7 @@ class MemoryMonitor:
 
             mem_info["total_memory"] = psutil.virtual_memory().total
             mem_info["free_memory"] = psutil.virtual_memory().available
-            mem_info["time"] = time.time()
+            mem_info["time"] = tstp
             mem_info["num_processes"] = len(self.process.children())+1
             # here we can add other parameters if need be
             self.resil.write(mem_info)
@@ -158,8 +158,8 @@ class MemoryMonitor:
                                     # "per_process_limit":per_process_limit,
                                     # "free_memory":self.get_free_memory_bytes(),
                                     #"siblings": self.siblings_snapshot() #only use when REALLY needed
-                                    
-            time.sleep(self.interval)
+            #TODO:change from sleep approach to its_time_to_measure approach                       
+            T.sleep(self.interval)
 
 
     def attach_to(self, forward_func):
@@ -168,7 +168,7 @@ class MemoryMonitor:
             self.memory_log.clear()  # Clear previous logs
             # add first empty record to split the 
             # different cases on the graphs   
-            self.memory_log.append({"time": time.time()}) #           
+            self.memory_log.append({"time": T.now()}) #           
             # Set initial memory limit
             #self.set_memory_limit()
 
@@ -234,8 +234,9 @@ class ResilientMonitor:
     #monitor that writes data to a separate file immediately upon recieval.
     #if a process suddenly terminated, the data logged by it is not lost.
 
-    def __init__(self, ):
+    def __init__(self, host ):
         self.online = 0        
+        self.host = host    
 
 
     def start(self, thecase ):
@@ -251,6 +252,8 @@ class ResilientMonitor:
             os.makedirs(dirr, exist_ok=True)
 
             res_log_filepath = dirr  + "/" +sig + ".csv"
+
+            self.host.tele.print(f"writing resilient log to: {res_log_filepath}")
             self.file_handle = open(res_log_filepath, 'a', encoding='utf-8')
             #self._write_header()
             self.online = 1

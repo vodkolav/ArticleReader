@@ -1,5 +1,5 @@
 import io
-import time
+from Benchmarking.timeutils import Time as T
 from memory_profiler import profile
 from typing import Callable, Any, Dict, List, Union
 # Define the structure for a single profiling record
@@ -63,7 +63,7 @@ class MemoryProfiler:
             )
             
             # --- Profiling and Timing Start ---
-            start_time = time.time()
+            start_time = T.now()
             
             try:
                 # 5. Execute the wrapped function
@@ -71,14 +71,14 @@ class MemoryProfiler:
                 
             except Exception as e:
                 # Record data on failure before re-raising
-                end_time = time.time()
+                end_time = T.now()
                 profiler._record_profile(
                     call_id, func_name, func_call_count, start_time, end_time, log_stream.getvalue()
                 )
                 raise e
             
             # --- Profiling and Timing End ---
-            end_time = time.time()
+            end_time = T.now()
             
             # 6. Record the complete profile data
             profiler._record_profile(

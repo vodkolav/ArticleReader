@@ -1,4 +1,3 @@
-from datetime import datetime
 import os
 
 import json
@@ -6,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
+from Benchmarking.timeutils import Time as T
 from Benchmarking.telemetry_manager import TelemetryManager
 import logging
 
@@ -44,7 +44,7 @@ class Bench:
         else:
             # create new experiment folder
             s = os.path.sep
-            self.experiment_id = datetime.now().strftime(f"%Y%m%d{s}%H%M")
+            self.experiment_id = T.timestamp(fmt=f"%Y%m%d{s}%H%M")
             self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # Ensure results directory exists
             self.TELE.print(f" creating new experiment in {self.folder}.")
@@ -60,7 +60,7 @@ class Bench:
 
     def config_template(self):
         #TODO: write down system parameters?
-        return {'summary': {"case_signature":"experiment"}}
+        return {'summary': {"case_signature":"experiment", "case_index":0}}
 
 
     def configure(self, pipeline: Pipeline):
@@ -167,21 +167,38 @@ class Bench:
             new_case['tracks']['resources']['resilient'] = "dbg/" 
 
 
+    def stamp_case(self,i,config):
+        # assigns all the ids and timestamps to the case
+        # those depend on time of run of the case
+        run_epoch = T.now()
+
+        tstp = T.timestamp(run_epoch)
+
+        case_sign = config['summary']["case_signature"]
+
+        case_id = tstp +"."+ case_sign
+
+        summary = {
+            "experiment_id": self.experiment_id,
+            "case_id": case_id,
+            "case_index": i, 
+            "output_root": self.output_root,
+            "start_time": run_epoch,
+            "timestamp": tstp,
+        }
+
+        config['summary'].update(summary)
+        pass
+
+
     def run_experiments(self, force = False):
         # sequentially
         # init the pipeline
 
         for i, config in enumerate(self.TODOcases):
-            config['summary']["experiment_id"] = self.experiment_id
-            config['summary']["output_root"] = self.output_root
-            config['summary']["case_index"] = i
             self.addresil(config)
+            self.stamp_case(i, config)
             status = self.pipeline.execute(config)
-            if status != "Ok":
-                self.TELE.error("fatal error in run_case. aborting")
-                return
-                # TODO: make it graceful
-                # TODO: move from TODOcases to DONEcases
             
             experiment_run =self.pipeline.results()
             self.save_case(experiment_run)
@@ -190,6 +207,12 @@ class Bench:
             #otherwise if run fails at some case, the whole bench log is lost
             self.TELE.collect_log()
             self.write_config(self.TELE.results(), "experiment", mode='w+')
+
+            if status == "Fatal":
+                self.TELE.error("fatal error in run_case. aborting run")
+                return
+                # TODO: make it graceful
+                # TODO: move from TODOcases to DONEcases            
 
         self.TELE.print("Benchmark run complete!")
         self.TELE.end()       
@@ -240,7 +263,7 @@ class Bench:
                 self.TELE.print(f"Detected {num_cores} CPU cores. Using {num_cores} workers.")
 
         # Separate every run of battery of tests to its own dir
-        self.benchmarks_root = self.benchmarks_root + "/" + datetime.now().strftime("%Y%m%d-%H%M")
+        self.benchmarks_root = self.benchmarks_root + "/" + T.now().strftime("%Y%m%d-%H%M")
         
         # Ensure results directory exists
         os.makedirs(self.benchmarks_root, exist_ok=True)

@@ -251,3 +251,34 @@ def test_permutations():
     print(df)
 
     print(len(df.drop_duplicates())) 
+
+
+from Benchmarking.timeutils import Time as T
+
+
+# Examples:
+
+n = 1761309603.4652164
+print(1,n)
+
+
+tsts = [
+    {"args": {"tz": "UTC"            }, "gt": "20251024-124003"}, 
+    {"args": {"tz": "Israel"         }, "gt": "20251024-154003"}, 
+    {"args": {                       }, "gt": "20251024-154003"}, 
+    {"args": {"fmt": "%Y%m%d/%H%M"   }, "gt": "20251024/1540"}, 
+    {"args": {"tz": "Europe/Berlin"  }, "gt": "20251024-144003"}, 
+    {"args": {"fmt": "%Y-%m-%d %H:%M"}, "gt": "2025-10-24 15:40"}, 
+    {"args": {                       }, "gt": "20251024-154003"}, 
+    ]
+
+def run_case(i, tst):
+    args =tst["args"]
+    res = T.timestamp(n,**args)
+    assrt = "Pass:" if res == tst["gt"] else "Fail"
+    print(i,assrt, tst["args"])
+    print("res:", res,'\n', "gt:", tst["gt"] )   
+    print("")
+
+for i,item in enumerate(tsts):
+    run_case(i,item)

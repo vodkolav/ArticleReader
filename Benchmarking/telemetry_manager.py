@@ -1,32 +1,14 @@
-# telemetry/telemetry_manager.py
-from collections import defaultdict
-import numpy as np
-import json
-from datetime import datetime
-import time
 
 from Benchmarking.EpisodeTracker import EpisodeTracker
 from Benchmarking.MemoryMonitor import MemoryMonitor
 from Benchmarking.MemoryProfiler import MemoryProfiler
-import Benchmarking.utils as butils
+from Benchmarking import utils as butils
+from Benchmarking.timeutils import Time as T
+
 import os
 
 import logging
 from copy import deepcopy
-#from algorithms.agent import RLAgent
-
-class NumpyEncoder(json.JSONEncoder):
-    """ Special json encoder for numpy types 
-        taken from https://stackoverflow.com/a/49677241/7097017
-    """
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
 
 
 class TelemetryManager:
@@ -152,14 +134,11 @@ class TelemetryManager:
         # You can record other step-specific info if needed from the 'info' dict
 
 
-    def now(self):
-        # TODO: variable format
-        return time.time()
 
 
-    def print(self, what):
+    def print(self, *what):
         #TODO: rename to info
-        self._print(what,"info")
+        self._print(*what, type = "info")
 
 
     def Log(self, entry:dict): 
@@ -167,10 +146,11 @@ class TelemetryManager:
         self.display(self.format_entry(entry), newline=True)
 
 
-    def _print(self, what, type = 'info', **kwargs):
+    def _print(self, *what, type = 'info', **kwargs):
         #TODO: change this
+        what = " ".join([str(w) for w in  what])
 
-        time = kwargs["time"] if 'time' in kwargs else self.now()
+        time = kwargs["time"] if 'time' in kwargs else T.now()
         entry = {
             "type": type,
             "time": time,
@@ -179,31 +159,23 @@ class TelemetryManager:
         self.Log(entry)
 
 
-    def warning(self, what):
-        self._print(what, "warning")
+    def warning(self, *what):
+        self._print(*what, type = "warning")
 
 
-    def error(self, what):
-        self._print(what, type = "error")
+    def error(self, *what):
+        self._print(*what, type = "error")
 
 
-    def debug(self, what):
-        self._print(what, type = "debug")
+    def debug(self, *what):
+        self._print(*what, type = "debug")
 
 
     def format_entry(self, entry: dict):
         newentry = entry.copy()
-        newentry['timestamp'] = self.timestamp(newentry['time'])
+        newentry['timestamp'] = T.timestamp(newentry['time'])
         disp = "[{type}] {timestamp}: {message}"
         return disp.format(**newentry)
-
-
-    def timestamp(self, entry = None):
-        if entry:
-            return datetime.fromtimestamp(entry)\
-                           .strftime(self.tstp_format) 
-        else:
-            return self.timestamp(self.now())
 
 
     def display(self, what, newline = False) -> None:
@@ -216,30 +188,16 @@ class TelemetryManager:
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         #self.summary = self.case.get("summary", {})
+        self.case = new_case
+        self.log = []
+        case_indx = new_case["summary"]["case_index"]
+        case_sign = new_case["summary"]["case_signature"]
 
-        if self.case == new_case:
-            self.warning("all fields are already identical, which should not happen")  # raise Error?;  
-        
-        force = False
-        if self.case == {}:
-            self.case = new_case
-            force = True  # first run, so all initializers must run
+        if case_indx == 0:
+            self.print("Starting first case in this run:\n", case_sign)
+        else:
+            self.print("Starting next case", case_indx, ":\n", case_sign )
 
-
-        self.case['summary'] = new_case['summary']
-
-        run_epoch = self.now()
-        self.case['summary']["start_time"] = run_epoch
-
-        tstp = self.timestamp(run_epoch)
-        self.case['summary']["timestamp"] = tstp
-
-        case_sign = new_case['summary']["case_signature"]
-
-        case_id = tstp +"."+ case_sign
-        self.case['summary']["case_id"] = case_id
-
-        return force
 
 
     def case_filename(self):
@@ -348,10 +306,14 @@ class TelemetryManager:
         #nm = self.summary["experiment_id"]
         #self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
-        self.log = []
+        
         # create a report
-        self.case['summary']["end_time"] = self.now()
+        self.case['summary']["end_time"] = T.now()
 
+        case_indx = self.case["summary"]["case_index"]
+        case_sign = self.case["summary"]["case_signature"]
+
+        self.print("Case", case_indx, "Done:\n", case_sign )
 
     def results(self):
         return deepcopy(self.case)

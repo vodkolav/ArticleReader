@@ -94,25 +94,30 @@ class Narrator:
         # TODO: ensure batch_df has column index for restoration of order later 
         #       ensure batch_df is a proper DF, not a view of another DF
 
-        waveforms, mel_lengths = self.infer(batch_df.sentence)
+        mel_outputs, mel_lengths = self.infer_tts(batch_df.sentence)        
         
         # Add more pause where needed, e.g between paragraphs (very naive currenty)         
         mel_lengths = self.add_pauses(batch_df.sentence, mel_lengths, pause_dur=40)        
 
-        mel_lengths = mel_lengths.detach().numpy()
+        mel_len_arr = mel_lengths.detach().numpy()
 
         # Add more pause where needed (very naive currenty)
-        batch_df["mel_lengths"] = mel_lengths
-        batch_df["durations_sec"] = mel_lengths * self.hop_len / self.sampling_freq
+        batch_df["mel_lengths"] = mel_len_arr
+        durations = mel_len_arr * self.hop_len / self.sampling_freq
+
+        batch_df["durations_sec"] = durations 
+        batch_df["fraction_silence"] = 1 - durations/max(durations)
+
         # TODO: something fishy is going on here. the [b,1,smaples] tensor is cut into
         # array of 0-dim tensors. might affect performance, need to check that
-
+        
+        waveforms = self.infer_vocoder(mel_outputs, mel_lengths)
+        
         # turning tensor into regular array
         arr = torch.tensor_split(waveforms.squeeze(1), len(waveforms), dim=0)
 
-
         # Cut silence padding while applying pauses from above 
-        batch_df["waveform"] = [a[:, :l] for a, l in zip(arr, mel_lengths * self.hop_len)]  
+        batch_df["waveform"] = [a[:, :l] for a, l in zip(arr, mel_len_arr * self.hop_len)]  
     
         # optional: batches are sorted again after recombination
         batch_df.sort_values("index", inplace=True)
@@ -131,25 +136,20 @@ class Narrator:
             # TODO: add measurement of runtime of a batch
             # DONE. but it adds i_btch to method signature.
             # TODO: check if it can be avoided
-            btch = self.text_to_speech_df(i_btch, btch)
-            done_dfs.append(btch)
-            
+            btch_procd = self.text_to_speech_df(i_btch, btch)
+            if btch_procd is not None:
+                btch_procd = btch
+            done_dfs.append(btch_procd)            
             
         done_dfs = pd.concat(done_dfs)
         return done_dfs
 
 
     def batch_summary(self, i_batch, batch_df):
-
-        import json
-        durations = batch_df.durations_sec
-        batch_df["percent_silence"] = 1 - durations/max(durations)
-
-        cols = ["index", "text_len", "seq_len", "mel_lengths", "durations_sec", "percent_silence"]
+        # we don't need actual content in the benchmark data. or do we?
+        cols = [c for c in batch_df.columns if c not in ["waveform","sentence"]]
         
-        #FIXME: Horrible implementation 
-        chunks = batch_df[cols].to_json(orient='records') # df -> json text
-        chunks = json.loads(chunks) # json text -> json obj (dict)
+        chunks = batch_df[cols].to_dict(orient='records') # df -> json text
         summ = {
             "batch": i_batch,
             "chunks": chunks
@@ -186,20 +186,39 @@ class Narrator:
         return arr, mel_lengths, self.hop_len
 
     def infer(self, batch):
+        raise NotImplementedError("use separate stages for inference")
+
+
+    def infer_tts(self, batch):
+
         # incoming: batch of chunks (~sentences)
-        self.tele.print("     running TTS model")
-        self.tele.print("     actual chunk length: " +  str(len(batch.iloc[0])))       
-        self.tele.print("     actual batch size: " +  str(len(batch)))       
-        self.tele.print("     actual self.tts.hparams.max_decoder_steps:"+  str(self.tts.hparams.max_decoder_steps ))
-        output = self.tts.encode_batch(batch)
+        self.tele.print("     actual chunk length (characters): " +  str(len(batch.iloc[0])))       
+        self.tele.print("     actual batch size (chunks): " +  str(len(batch)))       
+        self.tele.print("     actual self.tts.hparams.max_decoder_steps (tokens per chunk):"+  str(self.tts.hparams.max_decoder_steps ))
+        self.tele.print("     running TTS model...")
         
-        if output is not None: 
+        try:
+            output = self.tts.encode_batch(batch)
+        
             mel_outputs, mel_lengths, alignments = output
             self.tele.print("     TTS model finished")
-            if self.tts.hparams.max_decoder_steps in mel_lengths:
-                self.tele.warning("       We probably have truncated chunks")
 
-            self.tele.print("     running vocoder model")
+        except Exception as e : 
+            self.tele.error("     tts model failed. skipping vocoder stage, returning silence")
+            raise RuntimeError("tts model failed.") from e
+            # mel_lengths = torch.ones(len(batch)) * 256 # just arbitrary number
+            # waveforms = torch.zeros(batch.shape[0],1,int(max(mel_lengths)) * self.hop_len)        
+            #return zeros tensor of expected size  
+
+        if self.tts.hparams.max_decoder_steps in mel_lengths:
+            self.tele.warning("       We probably have truncated chunks")
+
+        return mel_outputs, mel_lengths
+
+
+    def infer_vocoder(self,mel_outputs, mel_lengths):
+        try:
+            self.tele.print("     running vocoder model...")
             waveforms = self.vocoder.decode_batch(
                 mel_outputs, mel_lengths, self.hop_len          
             )  # .squeeze(1)                  
@@ -207,23 +226,24 @@ class Narrator:
             if waveforms is not None:
                 self.tele.print("     vocoder model finished")   
                 # out: batch of waveforms, mel_lengths
-                return waveforms, mel_lengths    
-            else:                       
-                self.tele.error("     vocoder failed. returning silence")
-                # return zeros tensor of expected size
-                #waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
-        else: 
-            self.tele.error("     tts model failed. skipping vocoder stage, returning silence")
-            mel_lengths = torch.ones(len(batch)) * 256 # just arbitrary number
-            # return zeros tensor of expected size        
+        except Exception as e :      
+            #TODO: evolve this try-catch into a class called fuse that
+            # that attaches to a function and handles reporting of exception 
+            # to tele                
+            self.tele.error("     vocoder model failed. returning silence")
+            # return zeros tensor of expected size
+            #waveforms = torch.zeros(batch.shape[0],1,max(mel_lengths) * self.hop_len)
+            raise RuntimeError("vocoder model failed.") from e
+      
         #TODO: maybe handle output of failed runs without garbage data (the zeros tensor)
-        waveforms = torch.zeros(batch.shape[0],1,int(max(mel_lengths)) * self.hop_len)        
-        return waveforms, mel_lengths
+        return waveforms
+
 
     def batch(self, iterable, n=1):
         l = len(iterable)
         for ndx in range(0, l, n):
             yield iterable[ndx : min(ndx + n, l)]
+
 
     def text_to_speech_batched(self, chunks):
 

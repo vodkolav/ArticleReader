@@ -13,8 +13,6 @@ from Benchmarking.telemetry_manager import TelemetryManager
 import torch
 from speechbrain.inference import HIFIGAN, Tacotron2
 
-import time
-from datetime import datetime
 import os
 import json
 
@@ -25,7 +23,6 @@ class TTSPipeline(Pipeline):
         
         self.checkpoints_dir = checkpoints_dir
         # self.tele = None
-        self.tstp_format = "%Y%m%d-%H%M%S"
 
         # Order of initializers matters, as some depend on others.
         # If a parameter changes, all downstream initializers must re-run.
@@ -46,16 +43,8 @@ class TTSPipeline(Pipeline):
             ".tracks.resources.data", 
             ".tracks.log.data"] 
         
-        #self.first = True
+        self.current_case = {}
 
-
-    @property
-    def current_case(self):
-        return self.tele.case
-
-    @current_case.setter
-    def current_case(self,val):
-        self.tele.case = val
 
 
     def set_telemetry(self, tele: TelemetryManager):
@@ -66,12 +55,12 @@ class TTSPipeline(Pipeline):
         # TODO: Then how do we measure mem usage of individual components?
 
 
-
-        pth = ".tracks.profile"
-        conf = get_path(pth, self.case_template())
-        self.tele.AttachSensor(self, "init_case", pth, config = conf)
-        self.tele.AttachSensor(self, "run_case", pth, config = conf)
-        self.tele.AttachSensor(self, "execute", pth, config = conf)
+        #disable profiler temporarily    
+        # pth = ".tracks.profile"
+        # conf = get_path(pth, self.case_template())
+        # self.tele.AttachSensor(self, "init_case", pth, config = conf)
+        # self.tele.AttachSensor(self, "run_case", pth, config = conf)
+        # self.tele.AttachSensor(self, "execute", pth, config = conf)
 
 
         pth = ".tracks.resources"
@@ -204,8 +193,15 @@ class TTSPipeline(Pipeline):
 
     def init_case(self, new_case):
         # TODO: move to base class? 
+        self.tele.start(new_case)
 
-        force = self.tele.start(new_case) # or new_case? 
+        if self.current_case == new_case:
+            self.tele.warning("all fields are already identical, which should not happen")  # raise Error?;  
+        
+        force = False
+        if self.current_case == {}:
+            self.current_case = new_case
+            force = True  # first run, so all initializers must run
 
         #TODO: check for all parameters in cases, whether they've changed - not just initializers
 
@@ -229,18 +225,6 @@ class TTSPipeline(Pipeline):
                 continue  # already initialized to the same value
         force = False
 
-
-    def now(self):
-        # TODO: variable format
-        return time.time()
-
-
-    def timestamp(self, entry = None):
-        if entry:
-            return datetime.fromtimestamp(entry)\
-                           .strftime(self.tstp_format)  #TODO:  should be in config
-        else:
-            return self.timestamp(self.now())
 
     @property
     def case_file(self):
@@ -286,13 +270,18 @@ class TTSPipeline(Pipeline):
             
             self.init_case(new_case)
             self.init_telemetry()
-            self.run_case()
-            self.close_case()
+            self.run_case()            
+            status = "Ok"
 
         except Exception as e:
             cid = self.tele.case['summary']["case_id"]
-            msg = "".join(["Error excuting case", cid, ":", str(e)])            
-            self.tele.error(msg)
-            return "Error"
+            self.tele.error("Error excuting case", cid, ":", str(e))
+            status = "Error"
 
-        return "Ok"
+        # except FatalError as fe:
+        #     status = "Fatal" 
+
+        finally:
+            self.close_case()
+
+        return status

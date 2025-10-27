@@ -1,7 +1,6 @@
 import numpy as np
 from copy import deepcopy
-import time
-
+from Benchmarking.timeutils import Time as T
 
 class EpisodeTracker:
 
@@ -16,11 +15,12 @@ class EpisodeTracker:
         # add first empty record to split the 
         # different cases on the graphs   
         self.episodes.append({
-            "start_time": self.now(),
-            "end_time": self.now()})
+            "start_time": T.now(),
+            "end_time": T.now()})
         
         self.config_scheduling()
         self.record = {}
+        self.tele = None
 
     @property
     def total_episodes(self):
@@ -41,9 +41,6 @@ class EpisodeTracker:
     def sampling_value(self):
         return self._sampling_value
 
-    def now(self):
-        # TODO: variable format
-        return time.time()
 
     def config_scheduling(self, val = -1):
         # sampling_type:  interval_sec, interval_episodes, total_samples
@@ -66,7 +63,7 @@ class EpisodeTracker:
                 
                 self.samplePoints = np.int64(np.linspace(0, tot, num = value ))
                 invl = np.round(value/tot, decimals=2)
-                print("tracking and reporting once every", invl, "episodes")
+                self.tele.print("tracking and reporting once every", invl, "episodes")
 
 
     def time_to_record(self, i_episode):
@@ -78,7 +75,7 @@ class EpisodeTracker:
                     return True
 
             case "interval_sec":
-                timE = time.time()
+                timE = T.now()
                 if timE >= self.last_sample + self.sampling_value:
                     self.last_sample = timE
                     return True
@@ -109,19 +106,20 @@ class EpisodeTracker:
                 allowed = self.time_to_record(i_episode)
                 if allowed:
                     self.record["i"] = i_episode
-                    self.record["start_time"] = self.now()
-                    output = episode_func(*args, **kwargs)  # Run the original forward pass
-                    self.record["end_time"] = self.now()
+                    self.record["start_time"] = T.now()
+                    output = episode_func(*args, **kwargs)  # Run the original forward pass                    
 
                 else:
+                    #TODO: check and remove this redundant line
                     output = episode_func(*args, **kwargs)  # Run the original forward pass
 
             except Exception as e:
-                print("episode_func failed with exc: ", str(e))
+                self.tele.print(str(e), "Cause:",  str(e.__cause__))
                 self.exception = str(e)
                 output = None
             finally:
                 if allowed:
+                    self.record["end_time"] = T.now()
                     data = summary_func(*args, **kwargs)
                     self.record.update(data)
                     self.episodes.append(deepcopy(self.record))
