@@ -129,7 +129,13 @@ dmypy.json
 .pyre/
 data
 output
+benchmark
+trash
 checkpoints
+iframe_figures
 dbg
+test
 .obsidian
 **/*.ndz.*
+.virtual_documents
+*.zip

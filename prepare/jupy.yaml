@@ -1,0 +1,19 @@
+name: jupy
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - jupyterlab=4.*
+  - nodejs  # Required for JupyterLab extensions
+  - pip
+  - nb_conda_kernels  # Allows using Conda environments as Jupyter kernels
+  - jupyterlab-git  # Git integration
+  - jupyterlab-lsp  # Language server protocol support
+  - python-lsp-server  # LSP backend
+  - jupyterlab_code_formatter  # Auto-formatting support
+  - black  # Python code formatter
+  - isort  # Import sorting
+  - jupyterlab_execute_time  # Shows execution time of each cell
+  # - jupyterlab-system-monitor  # System resource monitoring
+  - jupyterlab-variableInspector  # Variable explorer
+  - ipykernel  # Jupyter kernel for Python

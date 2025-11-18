@@ -1,0 +1,23 @@
+name: pyspark_TTS
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip
+  - ipython
+  - ipykernel
+  - pandas
+  - pyspark
+  - python-confluent-kafka
+  - pytorch==2.4.1
+  - torchaudio
+  #- cpuonly
+  - PySoundFile
+  - nltk
+  - pip:
+      - pylatexenc==3.0a30
+      - speechbrain  
+      - findspark
+      - py4j
+      - ipykernel      

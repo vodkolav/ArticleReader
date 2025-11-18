@@ -1,4 +1,4 @@
-from LatexToSpeech import Chunker 
+from ArticleReader.Chunker import Chunker 
 import numpy as np 
 
 test = 'It also provides training recipes pretrained models and inference scripts for popular speech datasets as well \
