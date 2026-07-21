@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Benchmarking"
+version = "0.1.0"
+description = "Run and manage lots of experiments sanely"
+readme = "README.md"
+requires-python = ">=3.8"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "jq"
+]
+
+# List development/notebook dependencies here:
+[project.optional-dependencies]
+dev = [
+    "ipykernel",    # Required for VS Code Jupyter Notebooks
+    "pytest",       # For testing
+    "nbformat>=4.2.0", 
+    "memory_profiler"
+]

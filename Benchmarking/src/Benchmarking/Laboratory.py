@@ -1,6 +1,5 @@
 # experiment/run_single_experiment.py
 
-import gymnasium as gym
 import os
 from datetime import datetime
 import json

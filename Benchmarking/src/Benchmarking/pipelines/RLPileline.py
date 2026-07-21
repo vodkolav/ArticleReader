@@ -1,5 +1,5 @@
-from Benchmarking.RL import RLAgent, Strategy
-from telemetry_manager import TelemetryManager
+from Benchmarking.pipelines.RL import RLAgent, Strategy
+from Benchmarking.telemetry_manager import TelemetryManager
 from Benchmarking.Pipeline import Pipeline
 
 import gymnasium as gym

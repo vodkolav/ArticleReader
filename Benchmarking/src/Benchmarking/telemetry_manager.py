@@ -1,7 +1,7 @@
 
-from Benchmarking.EpisodeTracker import EpisodeTracker
-from Benchmarking.MemoryMonitor import MemoryMonitor
-from Benchmarking.MemoryProfiler import MemoryProfiler
+from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
+from Benchmarking.sensors.MemoryMonitor import MemoryMonitor
+from Benchmarking.sensors.MemoryProfiler import MemoryProfiler
 from Benchmarking import utils as butils
 from Benchmarking.timeutils import Time as T
 
