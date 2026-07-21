@@ -10,13 +10,17 @@ class Pipeline:
         pass
     
     @abstractmethod
-    def execute(self, new_case):
+    def run_case(self, new_case):
         pass
     
     @abstractmethod
     def results(self):
-        return self.tele.results()
+        pass
 
     @abstractmethod
     def set_telemetry(self, tele: TelemetryManager):
+        pass
+
+    @abstractmethod
+    def init_telemetry(self):
         pass

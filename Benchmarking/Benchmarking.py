@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
+from Benchmarking.utils import get_path, upd_path
 from Benchmarking.timeutils import Time as T
 from Benchmarking.telemetry_manager import TelemetryManager
 import logging
@@ -107,6 +108,15 @@ class Bench:
         #TODO: allow to add multiple grids for "or" combinations
 
 
+    def set_cases(self, cases):
+        """just add cases as is, without unfurling a grid
+
+        Args:
+            cases (list): list of dir, every dir is a case
+        """
+        self.TODOcases = cases
+
+
     def check_existing(self):
         # check if some cases already done and filter them out of TODOcases
         if not self.DONEcases:
@@ -198,7 +208,7 @@ class Bench:
         for i, config in enumerate(self.TODOcases):
             self.addresil(config)
             self.stamp_case(i, config)
-            status = self.pipeline.execute(config)
+            status = self.execute_case(config)
             
             experiment_run =self.pipeline.results()
             self.save_case(experiment_run)
@@ -217,6 +227,70 @@ class Bench:
         self.TELE.print("Benchmark run complete!")
         self.TELE.end()       
         self.write_config(self.TELE.results(), "experiment", mode='w+')
+
+
+    def init_case(self, new_case):
+        # TODO: move to base class? 
+        self.pipeline.tele.start(new_case)
+
+        if self.pipeline.current_case == new_case:
+            self.pipeline.tele.warning("all fields are already identical, which should not happen")  # raise Error?;  
+        
+        force = False
+        if self.pipeline.current_case == {}:
+            self.pipeline.current_case = new_case
+            force = True  # first run, so all initializers must run
+
+        #TODO: check for all parameters in cases, whether they've changed - not just initializers
+
+        for key, init_func in self.pipeline.initializers.items():
+            try:
+                cur_val = get_path(key, self.pipeline.current_case)
+                new_val = get_path(key, new_case)
+            except KeyError as e:
+                raise ValueError(f"Case is missing required key: {key}")
+
+            different = cur_val != new_val
+            if different or force:
+                force = True # once a change is detected, all downstream initializers must run
+                if not different:
+                    self.pipeline.tele.print(f" initializing {key} to {new_val}")
+                else:
+                    self.pipeline.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
+                init_func(new_case)
+                self.pipeline.current_case = upd_path(key, self.pipeline.current_case, new_val)
+            else:
+                continue  # already initialized to the same value
+        force = False
+
+
+    def execute_case(self, new_case):
+        try:
+            #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
+            #chunks = self.pipeline.chunker.get_dbg_subset(case["batch_size"], fr)
+            
+            self.init_case(new_case)
+            self.pipeline.init_telemetry()
+            self.pipeline.run_case()
+            status = "Ok"
+
+        except Exception as e:
+            cid = self.pipeline.tele.case['summary']["case_id"]
+            self.pipeline.tele.error("Error excuting case", cid, ":", str(e))
+            status = "Error"
+
+        # except FatalError as fe:
+        #     status = "Fatal" 
+
+        finally:
+            self.close_case()
+
+        return status
+
+
+    def close_case(self):
+        self.pipeline.tele.end()
+        #result.update(models_result)
 
 
     def save_case(self, experiment_run):

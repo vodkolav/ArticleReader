@@ -191,40 +191,6 @@ class TTSPipeline(Pipeline):
         return template
 
 
-    def init_case(self, new_case):
-        # TODO: move to base class? 
-        self.tele.start(new_case)
-
-        if self.current_case == new_case:
-            self.tele.warning("all fields are already identical, which should not happen")  # raise Error?;  
-        
-        force = False
-        if self.current_case == {}:
-            self.current_case = new_case
-            force = True  # first run, so all initializers must run
-
-        #TODO: check for all parameters in cases, whether they've changed - not just initializers
-
-        for key, init_func in self.initializers.items():
-            try:
-                cur_val = get_path(key, self.current_case)
-                new_val = get_path(key, new_case)
-            except KeyError as e:
-                raise ValueError(f"Case is missing required key: {key}")
-
-            different = cur_val != new_val
-            if different or force:
-                force = True # once a change is detected, all downstream initializers must run
-                if not different:
-                    self.tele.print(f" initializing {key} to {new_val}")
-                else:
-                    self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
-                init_func(new_case)
-                self.current_case = upd_path(key, self.current_case, new_val)
-            else:
-                continue  # already initialized to the same value
-        force = False
-
 
     @property
     def case_file(self):
@@ -258,30 +224,5 @@ class TTSPipeline(Pipeline):
         self.tele.print("done saving sound")
 
 
-    def close_case(self):
-        self.tele.end()
-        #result.update(models_result)
-
-
-    def execute(self, new_case):
-        try:
-            #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
-            #chunks = self.chunker.get_dbg_subset(case["batch_size"], fr)
-            
-            self.init_case(new_case)
-            self.init_telemetry()
-            self.run_case()            
-            status = "Ok"
-
-        except Exception as e:
-            cid = self.tele.case['summary']["case_id"]
-            self.tele.error("Error excuting case", cid, ":", str(e))
-            status = "Error"
-
-        # except FatalError as fe:
-        #     status = "Fatal" 
-
-        finally:
-            self.close_case()
-
-        return status
+    def results(self):
+        return self.tele.results()
