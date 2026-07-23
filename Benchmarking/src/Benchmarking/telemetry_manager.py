@@ -1,7 +1,5 @@
 
-from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
-from Benchmarking.sensors.MemoryMonitor import MemoryMonitor
-from Benchmarking.sensors.MemoryProfiler import MemoryProfiler
+
 from Benchmarking import utils as butils
 from Benchmarking.timeutils import Time as T
 
@@ -32,6 +30,8 @@ class TelemetryManager:
         self.log = []
 
         #self.summary = {}
+
+        self.lastType = "info"
 
 
         #TODO: define float format, ex: Avg Reward (last 100): {avg_reward:.2f}
@@ -143,10 +143,10 @@ class TelemetryManager:
 
     def Log(self, entry:dict): 
         self.log.append(entry)
-        self.display(self.format_entry(entry), newline=True)
 
 
     def _print(self, *what, type = 'info', **kwargs):
+        self.lastType = type
         #TODO: change this
         what = " ".join([str(w) for w in  what])
 
@@ -157,6 +157,9 @@ class TelemetryManager:
             "message": what,
             }
         self.Log(entry)
+
+        nl = kwargs["newline"] if 'newline' in kwargs else True
+        self.display(self.format_entry(entry), newline=nl)
 
 
     def warning(self, *what):
@@ -182,7 +185,15 @@ class TelemetryManager:
         if newline:
             print(what)
         else:
-            print(f"\r{what}" , end='')
+            print(f"\r{what}", " "*100 , end='')
+
+
+    def ping(self, *what) -> None:
+        if self.lastType == 'ping':
+            self._print(*what, type= 'ping', newline=False)
+        else:
+            self.lastType = 'ping'
+            self._print(*what, type= 'ping', newline=True)
 
 
     def start(self, new_case):
@@ -196,7 +207,8 @@ class TelemetryManager:
         if case_indx == 0:
             self.print("Starting first case in this run:\n", case_sign)
         else:
-            self.print("Starting next case", case_indx, ":\n", case_sign )
+            sep = "=" * 100
+            self.print("\n", sep, "\nStarting next case", case_indx, ":\n", case_sign )
 
 
 
@@ -236,6 +248,7 @@ class TelemetryManager:
         match sensor:
             case "episodes": 
                 config = butils.get_path(pth, self.case)
+                from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
                 snsr = EpisodeTracker(**config)
                 summ_func = getattr(obj, kwargs['summary_func'])
                 func = snsr.attach_to(func, summ_func)
@@ -246,7 +259,7 @@ class TelemetryManager:
                     config = kwargs["config"]
                 else:
                     config = butils.get_path(pth, self.case, default= {})
-
+                from Benchmarking.sensors.MemoryMonitor import MemoryMonitor
                 snsr = MemoryMonitor(**config)
                 #summ_func = kwargs['summary_func']
                 func = snsr.attach_to(func)
@@ -259,6 +272,7 @@ class TelemetryManager:
                         config = kwargs["config"]
                     else:
                         config = butils.get_path(pth, self.case, default= {})
+                    from Benchmarking.sensors.MemoryProfiler import MemoryProfiler
                     snsr = MemoryProfiler(**config)
                 func = snsr.attach_to(func)
 

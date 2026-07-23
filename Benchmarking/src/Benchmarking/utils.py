@@ -1,6 +1,7 @@
 #v2.py
 import json
 import jq
+import orjson
 from typing import Dict, Any, List, Union, Tuple
 
 import re 
@@ -192,7 +193,7 @@ def qua(val):
         val = val.strip('"')
         val = f'"{val}"'
     elif isinstance(val, dict):
-        val = json.dumps(val)
+        val = orjson.dumps(val, option=20).decode('UTF-8')
     return val
 
 

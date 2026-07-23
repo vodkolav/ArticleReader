@@ -19,12 +19,18 @@ class Bench:
 
     def __init__(self, benchmarks_root = "benchmark",
                        output_root = "output", 
-                       folder = None):
+                       folder = None,
+                       pattrn = "*",
+                       onerror = "skip"):
         
+        self.onerror = onerror
         self.TELE = TelemetryManager()       
     
         self.output_root = output_root
         self.benchmarks_root = benchmarks_root
+
+        abspath = Path(benchmarks_root).resolve().as_posix()
+        self.TELE.print("Absolute path: ", abspath)
 
         if folder:
             # load from existing experiment folder 
@@ -40,7 +46,7 @@ class Bench:
                 self.TELE.warning(f"experiment.json not found in {self.folder}, starting fresh.")
                 #.write_config(grid, filename = "grid", sort_keys=False)
             
-            self.DONEcases = self.load_cases() 
+            self.DONEcases = self.load_cases(pattrn) 
             # 
         else:
             # create new experiment folder
@@ -115,6 +121,7 @@ class Bench:
             cases (list): list of dir, every dir is a case
         """
         self.TODOcases = cases
+        self.check_existing()
 
 
     def check_existing(self):
@@ -134,7 +141,7 @@ class Bench:
         # write_json(doneconfigs, "doneconfigs.json", sort_keys=True)
 
 
-    def load_cases(self, patt = "2025*"):
+    def load_cases(self, patt = "*"):
 
         pth = Path(self.folder)
         
@@ -206,7 +213,7 @@ class Bench:
         # init the pipeline
 
         for i, config in enumerate(self.TODOcases):
-            self.addresil(config)
+            # self.addresil(config)
             self.stamp_case(i, config)
             status = self.execute_case(config)
             
@@ -275,9 +282,13 @@ class Bench:
             status = "Ok"
 
         except Exception as e:
-            cid = self.pipeline.tele.case['summary']["case_id"]
-            self.pipeline.tele.error("Error excuting case", cid, ":", str(e))
-            status = "Error"
+            if self.onerror == "fail":
+                raise 
+
+            else:
+                cid = self.pipeline.tele.case['summary']["case_id"]
+                self.pipeline.tele.error("Error executing case", cid, ":", str(e))
+                status = "Error"
 
         # except FatalError as fe:
         #     status = "Fatal" 

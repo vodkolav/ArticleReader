@@ -99,28 +99,21 @@ class EpisodeTracker:
             # else: 
             #     raise AttributeError("must include i_episode")
 
-            i_episode = args[0]
-
-            
             try:
-                allowed = self.time_to_record(i_episode)
-                if allowed:
-                    self.record["i"] = i_episode
-                    self.record["start_time"] = T.now()
-                    output = episode_func(*args, **kwargs)  # Run the original forward pass                    
-
-                else:
-                    #TODO: check and remove this redundant line
-                    output = episode_func(*args, **kwargs)  # Run the original forward pass
+                self.record["start_time"] = T.now()
+                output = episode_func(*args, **kwargs)  # Run the original forward pass                    
+                i_episode = summary_func(mode="index")
 
             except Exception as e:
                 self.tele.print(str(e), "Cause:",  str(e.__cause__))
                 self.exception = str(e)
                 output = None
+
             finally:
-                if allowed:
+                if self.time_to_record(i_episode):
                     self.record["end_time"] = T.now()
-                    data = summary_func(*args, **kwargs)
+                    self.record["i"] = i_episode
+                    data = summary_func(mode = "data")
                     self.record.update(data)
                     self.episodes.append(deepcopy(self.record))
                     self.record = {}

@@ -84,8 +84,7 @@ class Narrator:
         return mel_lengths
         # [min(mml,ml + p) for ml,p in zip(mel_lengths, pause)]
 
-    def text_to_speech_df(self, i_batch, batch_df: pd.DataFrame):# (self, batch_df: pd.DataFrame):
-        # i_batch is not needed in this case, but is required for episode tracking
+    def text_to_speech_df(self, batch_df: pd.DataFrame):# (self, batch_df: pd.DataFrame):
 
         # ensure sentences are sorted by seq_len
         batch_df.loc[:,"seq_len"] = batch_df.sentence.map(self.seq_len)
@@ -132,29 +131,42 @@ class Narrator:
         # sequential
         done_dfs = []
 
-        for i_btch, btch in enumerate(batchIterator):
+        for self.i_btch, self.btch in enumerate(batchIterator):
             # TODO: add measurement of runtime of a batch
             # DONE. but it adds i_btch to method signature.
             # TODO: check if it can be avoided
-            btch_procd = self.text_to_speech_df(i_btch, btch)
-            if btch_procd is not None:
-                btch_procd = btch
-            done_dfs.append(btch_procd)            
+            self.btch_procd = self.text_to_speech_df(self.btch)
+            if self.btch_procd is not None:
+                self.btch_procd = self.btch
+            done_dfs.append(self.btch_procd)            
             
         done_dfs = pd.concat(done_dfs)
         return done_dfs
 
 
-    def batch_summary(self, i_batch, batch_df):
-        # we don't need actual content in the benchmark data. or do we?
-        cols = [c for c in batch_df.columns if c not in ["waveform","sentence"]]
-        
-        chunks = batch_df[cols].to_dict(orient='records') # df -> json text
-        summ = {
-            "batch": i_batch,
-            "chunks": chunks
-        }
-        return summ
+    def batch_summary(self, mode = "data"):
+        """summary of the batch
+
+        Args:
+            mode (str, optional): index or data. Defaults to "data".
+
+        Returns:
+            int or dict: index or data
+        """
+
+        if mode == "index":
+            return self.i_btch
+        else:
+
+            # we don't need actual content in the benchmark data. or do we?
+            cols = [c for c in self.btch.columns if c not in ["waveform","sentence"]]
+            chunks = self.btch[cols].to_dict(orient='records') # df -> json text
+
+            summ = {
+                "batch": self.i_btch,
+                "chunks": chunks
+            }
+            return summ
 
 
     def text_to_speech(self, batch):
