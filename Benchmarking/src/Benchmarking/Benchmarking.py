@@ -59,7 +59,6 @@ class Bench:
             self.config = self.config_template()
             self.DONEcases = []
         
-        self.TELE.start(self.config)
 
         self.delamination = False
         self.test_recombination = False
@@ -151,13 +150,17 @@ class Bench:
             self.TELE.print(f"No existing cases found in {self.folder} matching {patt}.")
             return []
         
-        self.TELE.print(f"loading {len(paths)} files from:" + str( pth.absolute()))
         #self.TELE.print(str(paths[0]), "...", sep = "\n")
 
         cases = []
         for i,p in enumerate(paths):
-            cases.append(self.read_config(p.stem))
+            acase = self.read_config(p.stem)
+            # skip loading data of the whole experiment as an individual case
+            if acase['summary']['case_signature'] != 'experiment':
+                cases.append(acase)
    
+        self.TELE.print(f"loaded {len(cases)} files from:" + str( pth.absolute()))
+
         return cases
 
 
@@ -193,7 +196,21 @@ class Bench:
 
         case_sign = config['summary']["case_signature"]
 
-        case_id = tstp +"."+ case_sign
+        case_id = case_sign +"."+ tstp
+        # TODO: tbh, it should be called run_id or case_run, as the tstp is the time of running of 
+        # this case in the benchmark. 
+        # the intention of adding tstp to case_id was to make it unique to 
+        # avoid unintentionally overwriting the previous runs of the same case.
+        # 
+        # The case_signature is already supposed to be unique,
+        # unless the case is re-run (due to failure in previous run) 
+        # then there are possibilites:
+        # - the data of failed run is overwritten with new run 
+        # - the data of failed run is saved beside the data of new run - with different tstp
+
+        # in the end i decided to leave both. 
+        # the user can decide according to their needs
+        # which value to use for naming their files
 
         summary = {
             "experiment_id": self.experiment_id,
@@ -211,6 +228,8 @@ class Bench:
     def run_experiments(self, force = False):
         # sequentially
         # init the pipeline
+
+        self.TELE.start(self.config)
 
         for i, config in enumerate(self.TODOcases):
             # self.addresil(config)

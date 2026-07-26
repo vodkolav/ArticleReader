@@ -15,7 +15,7 @@ class TelemetryManager:
     """
     Manages the collection of training and evaluation metrics.
     """
-    def __init__(self): # experiment_config: dict ):
+    def __init__(self, log_level=logging.WARNING): # experiment_config: dict ):
         
         #self.metrics_data = experiment_config
 
@@ -59,34 +59,26 @@ class TelemetryManager:
 
         #self.reset_episode(0)
 
-
-    def intercept_logs(self, LIBRARY_LOGGER_NAME = 'third_party_lib' ):
-        # 1. Get the logger instance for the third-party library
-        #    Replace 'third_party_lib' with the actual name of the library's logger
         
-        library_logger = logging.getLogger(LIBRARY_LOGGER_NAME)
+        # 2. Redirect standard warnings into the logging framework
+        logging.captureWarnings(True)
 
-        # 2. Set the desired logging level 
-        #    The logger will only process events *at or above* this level (e.g., INFO, DEBUG)
-        library_logger.setLevel(logging.INFO) 
+        # 3. Create the bridge handler (passing 'self' as the telemetry instance)
+        # We can define the handler class right below or keep it separate
+        telemetry_handler = TelemetryManagerHandler(self)
 
-       
-        # 3. Create an instance of your custom handler
-        custom_handler = TelemetryManagerHandler(self)
+        # 4. Set formatting
+        formatter = logging.Formatter('%(filename)s:%(lineno)d - %(message)s')
+        telemetry_handler.setFormatter(formatter)
 
-        # Optional: Add a Formatter
         # This ensures the log message passed to your manager is formatted correctly
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        custom_handler.setFormatter(formatter)
+        # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-        # 4. Attach the custom handler to the library's logger
-        library_logger.addHandler(custom_handler)
-
-        # 5. Optional: Stop propagation to the root logger
-        #    If the logs are still showing up on the console (because they're being handled 
-        #    by the default 'root' logger), you can stop them from reaching it.
-        library_logger.propagate = False 
-
+        # 5. Attach the handler to the Root Logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)  # Configurable log level
+        root_logger.addHandler(telemetry_handler)
+ 
 
     @property
     def total_episodes(self):
@@ -212,8 +204,12 @@ class TelemetryManager:
 
 
 
-    def case_filename(self):
-        case_id = self.case['summary']["case_id"]
+    def case_filename(self, field = "case_id"):
+        opts = ["case_id", "case_signature"]
+        if field not in opts:
+            raise ValueError("Possible values for field are: " + str(opts)) 
+
+        case_id = self.case['summary'][field]
         experiment_id = self.case['summary']["experiment_id"]
         exp_dir = os.path.join(self.output_root, experiment_id)
         os.makedirs(exp_dir, exist_ok=True)
@@ -226,7 +222,7 @@ class TelemetryManager:
 
 
     def collect_log(self):
-        self.case = butils.upd_path(".tracks.log.data", self.case, [], force=True)
+        self.case = butils.upd_path(".tracks.log.data", self.case, [])
         # FIXME: fix this ugly hack
         self.case["tracks"]["log"]["data"] = self.log        
 
@@ -239,13 +235,23 @@ class TelemetryManager:
 
 
     def AttachSensor(self, obj, func_name, label, **kwargs):
-        tracks = ".tracks."
-        level, sensor = label.split(tracks)
+
+        level, tracks, sensor, lbl = butils.nunpack(label.split("."),4)
+
+        if tracks != "tracks":
+            raise ValueError("path not recognized: " + label)
         #item = "data"
         func = getattr(obj, func_name)
-        pth = f"{level}{tracks}{sensor}"
+        pth = label # f"{level}{tracks}{sensor}"
 
         match sensor:
+            case "harvest": 
+                config = butils.get_path(pth, self.case)
+                from Benchmarking.sensors.Harvester import Harvester
+                snsr = Harvester(**config)
+                summ_func = getattr(obj, kwargs['summary_func'])
+                func = snsr.attach_to(func, summ_func)
+
             case "episodes": 
                 config = butils.get_path(pth, self.case)
                 from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
@@ -296,7 +302,7 @@ class TelemetryManager:
             if "profile" in k and sens_summary['data']!=[]:
                 self.save_other(sens_summary)
 
-            self.case = butils.upd_path(k, self.case, sens_summary, force=True)
+            self.case = butils.upd_path(k, self.case, sens_summary)
 
 
     def save_other(self,v):

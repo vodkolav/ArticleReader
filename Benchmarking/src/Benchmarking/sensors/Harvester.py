@@ -1,7 +1,7 @@
 from copy import deepcopy
 import warnings
 import numpy as np
-
+from Benchmarking.timeutils import Time as T
 
 class Harvester:
     """Collects variable values across iterations of a loop, and concatenates them at the end."""
@@ -39,6 +39,36 @@ class Harvester:
             return fnlocals[vn]
 
 
+
+    def attach_to(self, dump_func, summary_func):
+
+        def wrapper(*args, **kwargs):
+
+            try:
+                # self.record["start_time"] = T.now()
+                output = dump_func(*args, **kwargs)  # Run the original forward pass                    
+                i_episode = summary_func(mode="index")
+
+            except Exception as e:
+                self.tele.print(str(e), "Cause:",  str(e.__cause__))
+                self.exception = str(e)
+                output = None
+
+            finally:
+                #if self.time_to_record(i_episode):
+                self.collect(*args, **kwargs)
+                
+                    # self.record["end_time"] = T.now()
+                    # self.record["i"] = i_episode
+                    # data = summary_func(mode = "data")
+                    # self.record.update(data)
+                    # self.episodes.append(deepcopy(self.record))
+                    # self.record = {}
+
+            return output
+        return wrapper
+
+
     def collect(self, fnlocals):
 
         #TODO: validate that all variables that we want to collect are of the same size. 
@@ -50,6 +80,7 @@ class Harvester:
             varbl = self.get(fnlocals,vn)
 
             # if var is scalar - put it aside to later add as repeated
+            # TODO: reconsider how we store scalars. 
             if np.isscalar(varbl):
                 scalars[vn] = varbl
             else:
@@ -66,7 +97,8 @@ class Harvester:
         
         for vn, content in scalars.items():
             self.storage[vn].append(np.repeat(content, size))
-
+            # TODO: make scalars repeating happen only when 
+            # returning results and optional - under repeat_scalars flag 
 
     def validate_size(self, size, content):
         if self.on_size_mismatch == 'ignore':
@@ -91,6 +123,7 @@ class Harvester:
                 self.storage[k].append(deepcopy(v))
             else:
                 self.storage[k] = [deepcopy(v)]
+
 
     def results(self, extract_attrs = True, break_2d_vectors = True,  **kwargs):
         """Returns the harvested data in the form of a dictionary where 
@@ -129,6 +162,9 @@ class Harvester:
         
         return store
 
+
+    def summarize(self):
+        return self.results()
 
     def last_step(self, extract_attrs = True, break_2d_vectors = True):
 

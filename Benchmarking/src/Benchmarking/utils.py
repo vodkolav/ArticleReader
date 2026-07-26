@@ -2,6 +2,7 @@
 import json
 import jq
 import orjson
+import collections.abc
 from typing import Dict, Any, List, Union, Tuple
 
 import re 
@@ -206,20 +207,37 @@ def filter_out_keys(templ, *args):
     return jq.compile(jqq).input(templ).first() 
 
 
-def upd_path(pth, templ, val, force = False):
-    
-    if force or jq.compile(f'{pth}?').input(templ).first():
-        val = qua(val)
-        jqquery = f'{pth} = {val}'
-        templ = jq.compile(jqquery).input(templ).first() 
-        #print(f"set {k} to {o}")
-        return templ
-    else:
-        print(f"key {pth} not in template")
-        #TODO: check if we really need this case.
-        # naturally, an update function should create missing paths. or not? 
-        raise KeyError(pth)
-    
+def upd_path(path, host, guest):
+
+    path = path.strip(".").split(".")
+
+    guest = bury(path,guest)
+
+    return merge_dicts(guest, host)
+
+
+def bury(where, what):
+    if where:
+        k = where[0]
+        if "[" in k:
+            raise ValueError("...list[2]... paths are not supported in 'where' yet. only 'dict.dict.dict...' paths are supported for now.")
+        v = where[1:]
+        r = {k:bury(v,what)}
+        return r
+    else: 
+        return what
+
+
+
+def merge_dicts(d, u):
+
+    for k, v in u.items():
+        if isinstance(v, collections.abc.Mapping):
+            d[k] = merge_dicts(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
+
 
 def span_grid(grid, templ):
     # signature is the set of parameters 
@@ -233,7 +251,7 @@ def span_grid(grid, templ):
         caSe[cidp] = signature_fmt(siGn)
         # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
-            t = upd_path(k, t, v, force=True)
+            t = upd_path(k, t, v)
         cases.append(t) 
     return cases
 
@@ -288,7 +306,7 @@ def write_json(caSe, filepath, sort_keys = False, mode = 'w'):
     """Writes experiment configurations to a JSON file"""
     try:
         with open(filepath, mode) as f:
-            json.dump(caSe, f, indent=2, sort_keys=sort_keys)
+            json.dump(caSe, f, indent=2, sort_keys=sort_keys, cls=NumpyEncoder)
     except FileNotFoundError:
         print(f"Error: Configuration file not found at {filepath}")
         return
@@ -310,6 +328,79 @@ def isDebugging():
        else:
               print("Running in NOdebug mode")
               return False
+
+
+def nunpack(a,n):
+    """unpack a into exactly n variables. If a has less than n variables, assign None to the extra ones.
+    
+    a = "b.c.d."
+    b,c,d,e,f,g = nunpack(a.split("."),6)
+    b,c,d,e,f,g
+    >>> ('b', 'c', 'd', '', None, None)
+
+    Args:
+        a (_type_): _description_
+        n (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    aa = a + [None]*n
+    return aa[:n] 
+
+
+def describe(subst):
+    summ = dig({".":subst},-1)
+    print(summ)
+
+
+def shape(value):
+    t = type(value).__name__
+    if hasattr(value, '__getitem__'):    #some collection... 
+        if hasattr(value, 'shape'):         # some numpy, can't dive in
+            l, s, r =   ("[", value.shape ,"]") 
+        else:
+            if hasattr(value, '__len__'):   # some builtin collection
+                s = len(value)
+                if t == "dict":                 # dict, can dive in
+                    l, r = ("{", "}")
+                elif t == "tuple":              # tuple, can dive in
+                    l, r = ("(", ")")
+                elif t == "list":               # list, can dive in
+                    l, r = ("[", "]")
+                else:                           # probably str, can't dive in 
+                    l, r = ("(", ")")
+            else:
+                raise ValueError("Scary, very scary, we don't know what that is. If we knew wat that is, we don't know what that is. ")
+    else:
+        l, s, r = ("","","")  # scalar, can't dive in; show value
+
+    return t, l, s, r
+
+
+def one(k,v,f):
+    
+    t, l, s, r = shape(v) 
+    dug = dig(v,f)
+    c =  dug # "\n".join(dug)
+    i = "    "*f
+    fmt = f"{i}{k}: {t}{l}{s}{r} = {c}"
+    return fmt
+
+
+def dig(subst, f):               
+    if isinstance(subst, dict):
+        summ = ["  "] + [ one(f'\"{k}\"',v,f+1) for k,v in subst.items() ]
+        summ = "\n".join(summ)
+    elif isinstance(subst, list) :
+        lastitem = f'[{len(subst)}]' 
+        summ = "\n" + one(lastitem,subst[-1],f+1)
+    elif isinstance(subst, str):
+        summ = f"'{subst.replace("\n","")}'"
+        # summ = f"'{subst.replace("\n","\n" + "    "*(f+1))}'"
+    else:
+        summ = str(subst)
+    return  summ
 
 
 class NumpyEncoder(json.JSONEncoder):
