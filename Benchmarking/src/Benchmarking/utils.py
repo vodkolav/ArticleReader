@@ -4,7 +4,7 @@ import jq
 import orjson
 import collections.abc
 from typing import Dict, Any, List, Union, Tuple
-
+import numpy as np
 import re 
 # JSON delamination and recombination utility functions
 
@@ -172,17 +172,25 @@ def permutations( grid):
         res, signatures = mg(l1, l2, signatures)
     return res, signatures
 
-cidp = ".summary.case_signature"
+#TODO: put this in the right place
+cidp = ".ID.case_signature"
 
 
-def get_path(pth, templ, default=None):
-    val = jq.compile(f'{pth}?').input(templ).first()
-    if val:
-        return val
-    elif default is not None:
-        return default
-    else:
-        raise KeyError(pth)
+def get_path(path, jsobj):
+    k = path[0]
+    if isinstance(k,str) and "[" in k:
+        k,b = k.split("[")
+        b = int(b.split("]")[0])
+        path = [k,b]
+
+    if len(path) > 1:
+        v = jsobj[k]
+        c = path[1:]
+        return get_path(c,v) 
+    else: 
+        v = jsobj[k]
+        return v
+
 
 
 def qua(val):
@@ -220,6 +228,7 @@ def bury(where, what):
     if where:
         k = where[0]
         if "[" in k:
+            #TODO: implement
             raise ValueError("...list[2]... paths are not supported in 'where' yet. only 'dict.dict.dict...' paths are supported for now.")
         v = where[1:]
         r = {k:bury(v,what)}
@@ -307,7 +316,9 @@ def write_json(caSe, filepath, sort_keys = False, mode = 'w'):
     try:
         with open(filepath, mode) as f:
             json.dump(caSe, f, indent=2, sort_keys=sort_keys, cls=NumpyEncoder)
-    except FileNotFoundError:
+            # TODO: make "indent" variable to let user decide 
+            # whether to output indented json for ease of human reading
+    except FileNotFoundError as e:
         print(f"Error: Configuration file not found at {filepath}")
         return
     except json.JSONDecodeError:
@@ -331,7 +342,8 @@ def isDebugging():
 
 
 def nunpack(a,n):
-    """unpack a into exactly n variables. If a has less than n variables, assign None to the extra ones.
+    """unpack 'a' into exactly n variables. 
+    If a has less than n variables, assign None to the extra ones.
     
     a = "b.c.d."
     b,c,d,e,f,g = nunpack(a.split("."),6)
@@ -357,7 +369,7 @@ def describe(subst):
 def shape(value):
     t = type(value).__name__
     if hasattr(value, '__getitem__'):    #some collection... 
-        if hasattr(value, 'shape'):         # some numpy, can't dive in
+        if hasattr(value, 'shape'):         # some numpy, can't dive in. or can? 
             l, s, r =   ("[", value.shape ,"]") 
         else:
             if hasattr(value, '__len__'):   # some builtin collection
@@ -393,6 +405,9 @@ def dig(subst, f):
         summ = ["  "] + [ one(f'\"{k}\"',v,f+1) for k,v in subst.items() ]
         summ = "\n".join(summ)
     elif isinstance(subst, list) :
+        lastitem = f'[{len(subst)}]' 
+        summ = "\n" + one(lastitem,subst[-1],f+1)
+    elif isinstance(subst, np.ndarray) :
         lastitem = f'[{len(subst)}]' 
         summ = "\n" + one(lastitem,subst[-1],f+1)
     elif isinstance(subst, str):

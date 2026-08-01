@@ -6,7 +6,7 @@ from Benchmarking.timeutils import Time as T
 class Harvester:
     """Collects variable values across iterations of a loop, and concatenates them at the end."""
 
-    def __init__(self, varnames="", elems=None, on_size_mismatch = 'error'):
+    def __init__(self, varnames="", elems=None, on_size_mismatch = 'error', **kwargs):
         # TODO: add option to specify how to treat error when variable is not found in fnlocals, e.g ignore, warn, or raise error
         self.varnames = varnames
         self.elems = elems
@@ -163,8 +163,45 @@ class Harvester:
         return store
 
 
+    def sizes(self, results):
+
+        lens = [len(v) for v in results.values()]
+        allSameSize = all([a == lens[0] for a in lens])
+        if not allSameSize: 
+            if self.on_size_mismatch == 'warn':
+                warnings.warn("Mismatch in collected variables sizes:" + str(lens)) 
+            elif self.on_size_mismatch == 'error':
+                raise ValueError("Mismatch in collected variables sizes:"
+                                  + str(lens) 
+                                  + ". make sure al variables within particular collect() "
+                                  "call are either of the same size or scalars ")
+        else:
+            return lens[0]
+
+
+
     def summarize(self):
-        return self.results()
+
+        results = self.results()
+
+        res = {
+            #TODO: decide if we need these
+            # "sampling_type": self._sampling_type, # probably this is type "on_demand"
+            # "sampling_value": self.sampling_value,
+            # "extract_attrs" = ?, 
+            # "break_2d_vectors" = ? 
+            "varnames": self.varnames ,
+            "on_size_mismatch": self.on_size_mismatch,
+            "data": results,
+            "summary": {
+                "n_samples": self.sizes(results),
+                    }
+        }
+        if self.elems:
+            res['elems'] = self.elems 
+
+        return res
+
 
     def last_step(self, extract_attrs = True, break_2d_vectors = True):
 

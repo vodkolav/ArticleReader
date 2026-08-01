@@ -2,18 +2,34 @@ import os
 
 import json
 from pathlib import Path
-import pandas as pd
+# import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
 from Benchmarking.utils import get_path, upd_path
 from Benchmarking.timeutils import Time as T
 from Benchmarking.telemetry_manager import TelemetryManager
+from Benchmarking.Case import Case
 import logging
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO )
 
 class Bench:
+
+    pipeline: Pipeline
+
+    tele: TelemetryManager # telemetry for current case
+
+    TELE: TelemetryManager # telemetry for the whole experiment
+
+    @property
+    def bench_folder(self):
+        return os.path.join(self.benchmarks_root, self.experiment_id)
+
+    @property
+    def output_folder(self):
+        return os.path.join(self.output_root, self.experiment_id)
+
 
 #TODO: support multiple runs of an experiment?
 
@@ -25,6 +41,7 @@ class Bench:
         
         self.onerror = onerror
         self.TELE = TelemetryManager()       
+        # self.TELE.start(self.config)
     
         self.output_root = output_root
         self.benchmarks_root = benchmarks_root
@@ -35,28 +52,17 @@ class Bench:
         if folder:
             # load from existing experiment folder 
             self.experiment_id = folder
-            self.folder = os.path.join(benchmarks_root, self.experiment_id)
-            # check if folder exists and has experiment.json            
-            if os.path.exists(os.path.join(self.folder, "experiment.json")):
-            # load existing experiment 
-                self.config = self.read_config("experiment")
-            else:
-                self.config = self.config_template() 
-
-                self.TELE.warning(f"experiment.json not found in {self.folder}, starting fresh.")
-                #.write_config(grid, filename = "grid", sort_keys=False)
-            
-            self.DONEcases = self.load_cases(pattrn) 
+            self.load_cases(pattrn)
             # 
         else:
             # create new experiment folder
             s = os.path.sep
             self.experiment_id = T.timestamp(fmt=f"%Y%m%d{s}%H%M")
-            self.folder = os.path.join(benchmarks_root, self.experiment_id)
             # Ensure results directory exists
-            self.TELE.print(f" creating new experiment in {self.folder}.")
-            os.makedirs(self.folder, exist_ok=True)
-            self.config = self.config_template()
+            self.TELE.print(f" creating new experiment in {self.bench_folder}.")
+            os.makedirs(self.bench_folder, exist_ok=True)
+            os.makedirs(self.output_folder, exist_ok=True)
+            self.TELE.CAse = self.config_template()
             self.DONEcases = []
         
 
@@ -66,7 +72,12 @@ class Bench:
 
     def config_template(self):
         #TODO: write down system parameters?
-        return {'summary': {"case_signature":"experiment", "case_index":0}}
+        return Case({
+            "config": {},
+            'ID': {"case_signature":"experiment",
+                   "case_index":0},
+            "tracks":  {},
+            "summary": {}})
 
 
     def configure(self, pipeline: Pipeline):
@@ -74,6 +85,7 @@ class Bench:
         telemetry = TelemetryManager()
         pipeline.set_telemetry(telemetry)
         self.pipeline = pipeline
+        self.tele = telemetry
         # get template case from pipeline
 
     @property
@@ -105,7 +117,7 @@ class Bench:
             }
         """
         self.grid = grid
-        self.TODOcases = span_grid(grid, case_template)
+        self.TODOcases = [Case(c) for c in span_grid(grid, case_template)]
         self.TELE.print(f"Unfurled grid into {len(self.TODOcases)} TODOcases")
 
         self.check_existing()
@@ -113,13 +125,14 @@ class Bench:
         #TODO: allow to add multiple grids for "or" combinations
 
 
-    def set_cases(self, cases):
+    def set_cases(self, cases: dict):
         """just add cases as is, without unfurling a grid
 
         Args:
             cases (list): list of dir, every dir is a case
         """
-        self.TODOcases = cases
+        #TODO: validate all incoming cases signatures are also unique among themselves.
+        self.TODOcases = [Case(c) for c in cases]
         self.check_existing()
 
 
@@ -127,13 +140,12 @@ class Bench:
         # check if some cases already done and filter them out of TODOcases
         if not self.DONEcases:
             return False
-        doneconfigs = filter_out_keys(self.DONEcases, "summary", "tracks")
 
         subm = len(self.TODOcases)
 
-        self.TODOcases = [c for c in self.TODOcases if not filter_out_keys(c, "summary", "tracks") in doneconfigs]
+        self.TODOcases = [c for c in self.TODOcases if not c in self.DONEcases]
 
-        self.TELE.print(f"\nOut of {subm} submitted cases,\n  {len(doneconfigs)} cases are already done.\n  {len(self.TODOcases)} are new and will be run. ")
+        self.TELE.print(f"\nOut of {subm} submitted cases,\n  {subm - len(self.TODOcases)} cases are already done.\n  {len(self.TODOcases)} are new and will be run. ")
 
         # write_json(self.TODOcases, "todo_cases.json", sort_keys=True)
         # write_json(self.DONEcases, "done_cases.json", sort_keys=True)
@@ -142,26 +154,34 @@ class Bench:
 
     def load_cases(self, patt = "*"):
 
-        pth = Path(self.folder)
+        pth = Path(self.bench_folder)
         
-        paths = list(pth.glob(patt +".json"))
+        paths = pth.glob(patt +".json")
         
         if paths == []:
-            self.TELE.print(f"No existing cases found in {self.folder} matching {patt}.")
+            self.TELE.print(f"No existing cases found in {self.bench_folder} matching {patt}.")
             return []
         
         #self.TELE.print(str(paths[0]), "...", sep = "\n")
 
-        cases = []
+        self.DONEcases = []
         for i,p in enumerate(paths):
-            acase = self.read_config(p.stem)
+            acase = Case(self.read_config(p.stem))
             # skip loading data of the whole experiment as an individual case
-            if acase['summary']['case_signature'] != 'experiment':
-                cases.append(acase)
-   
-        self.TELE.print(f"loaded {len(cases)} files from:" + str( pth.absolute()))
+            if acase.case_signature == 'experiment':
 
-        return cases
+                self.TELE.CAse = acase
+                self.TELE.print("loading experiment from ", str(p))
+            else:
+                self.DONEcases.append(acase)
+
+        if not self.TELE.CAse:
+            self.TELE.CAse = self.config_template() 
+            self.TELE.warning(f"experiment.json not found in {self.bench_folder}, starting fresh.")
+
+   
+        self.TELE.print(f"loaded {len(self.DONEcases)} files from:" + str( pth.absolute()))
+
 
 
     def summary(Cases):
@@ -172,13 +192,14 @@ class Bench:
 
 
     def read_config(self, filename):
-        config_filepath = os.path.join(self.folder , f"{filename}.json")
+        config_filepath = os.path.join(self.bench_folder , f"{filename}.json")
         caSe = read_json(config_filepath)
         return caSe
 
 
-    def write_config(self, caSe, filename, sort_keys = False, mode = 'x'):
-        config_filepath = os.path.join(self.folder , f"{filename}.json")
+    def write_config(self, caSe, filename, path = None, sort_keys = False, mode = 'x'):
+        path = path if path else self.bench_folder 
+        config_filepath = os.path.join(path, f"{filename}.json")
         write_json(caSe, config_filepath, sort_keys=sort_keys, mode = mode)
 
 
@@ -187,16 +208,15 @@ class Bench:
             new_case['tracks']['resources']['resilient'] = "dbg/" 
 
 
-    def stamp_case(self,i,config):
+    def stamp_case(self,i,newcase: Case):
         # assigns all the ids and timestamps to the case
         # those depend on time of run of the case
         run_epoch = T.now()
 
         tstp = T.timestamp(run_epoch)
 
-        case_sign = config['summary']["case_signature"]
+        case_sign = newcase.ID["case_signature"]
 
-        case_id = case_sign +"."+ tstp
         # TODO: tbh, it should be called run_id or case_run, as the tstp is the time of running of 
         # this case in the benchmark. 
         # the intention of adding tstp to case_id was to make it unique to 
@@ -212,67 +232,87 @@ class Bench:
         # the user can decide according to their needs
         # which value to use for naming their files
 
-        summary = {
+        ID = {
             "experiment_id": self.experiment_id,
-            "case_id": case_id,
+            "case_signature": case_sign,
+            "case_id": case_sign +"."+ tstp,
+            "run_id": case_sign +"."+ tstp,
             "case_index": i, 
             "output_root": self.output_root,
+        }
+
+
+        summary = {
             "start_time": run_epoch,
             "timestamp": tstp,
         }
 
-        config['summary'].update(summary)
-        pass
+        newcase.update_case(".summary", summary)
+        newcase.update_case(".ID", ID)
+
+        if i == 0:
+            self.tele.print("Starting first case in this run:\n", 
+                            newcase.case_signature)
+        else:
+            sep = "=" * 100
+            self.tele.print("\n", sep, "\nStarting next case", 
+                            newcase.case_index, 
+                            ":\n", newcase.case_signature )
+
+        return newcase
 
 
     def run_experiments(self, force = False):
         # sequentially
         # init the pipeline
 
-        self.TELE.start(self.config)
+        i = 0 
 
-        for i, config in enumerate(self.TODOcases):
-            # self.addresil(config)
-            self.stamp_case(i, config)
-            status = self.execute_case(config)
-            
-            experiment_run =self.pipeline.results()
-            self.save_case(experiment_run)
+        while bool(self.TODOcases):
+
+            # pop until empty
+            newCase = self.TODOcases.pop(0)
+
+            newCase = self.stamp_case(i, newCase)
+
+            status, newCaseExecuted = self.execute_case(newCase)
             
             #dump the TELE of the bench to disk after every case - 
             #otherwise if run fails at some case, the whole bench log is lost
             self.TELE.collect_log()
-            self.write_config(self.TELE.results(), "experiment", mode='w+')
+            self.write_config(self.TELE.results().results, "experiment", mode='w+')
 
             if status == "Fatal":
                 self.TELE.error("fatal error in run_case. aborting run")
+                self.TODOcases += newCase
                 return
                 # TODO: make it graceful
-                # TODO: move from TODOcases to DONEcases            
+
+            self.DONEcases += [newCaseExecuted]
 
         self.TELE.print("Benchmark run complete!")
         self.TELE.end()       
-        self.write_config(self.TELE.results(), "experiment", mode='w+')
+        self.write_config(self.TELE.results().results, "experiment", mode='w+')
 
 
-    def init_case(self, new_case):
-        # TODO: move to base class? 
-        self.pipeline.tele.start(new_case)
+    def init_case(self, new_case: Case):
+        # self.tele.start(new_case)
 
-        if self.pipeline.current_case == new_case:
-            self.pipeline.tele.warning("all fields are already identical, which should not happen")  # raise Error?;  
+        if self.tele.CAse.config == new_case.config:
+            self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
         
         force = False
-        if self.pipeline.current_case == {}:
-            self.pipeline.current_case = new_case
+        if not self.tele.CAse:
+            self.tele.CAse = new_case
             force = True  # first run, so all initializers must run
 
-        #TODO: check for all parameters in cases, whether they've changed - not just initializers
+        #Check for all initializers, whether their value changed and 
+        #re-init whichever have and all their downstream initializers
 
         for key, init_func in self.pipeline.initializers.items():
             try:
-                cur_val = get_path(key, self.pipeline.current_case)
-                new_val = get_path(key, new_case)
+                cur_val = self.tele.CAse.get_path(key)
+                new_val = new_case.get_path(key)
             except KeyError as e:
                 raise ValueError(f"Case is missing required key: {key}")
 
@@ -280,20 +320,20 @@ class Bench:
             if different or force:
                 force = True # once a change is detected, all downstream initializers must run
                 if not different:
-                    self.pipeline.tele.print(f" initializing {key} to {new_val}")
+                    self.tele.print(f" initializing {key} to {new_val}")
                 else:
-                    self.pipeline.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
+                    self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
+                # self.tele.CAse.update_case(key, new_val)
                 init_func(new_case)
-                self.pipeline.current_case = upd_path(key, self.pipeline.current_case, new_val)
             else:
                 continue  # already initialized to the same value
         force = False
 
+        self.tele.CAse = new_case
+
 
     def execute_case(self, new_case):
         try:
-            #TODO: define test batch in new_case.data.[from_chunk, to_chunk ] or something
-            #chunks = self.pipeline.chunker.get_dbg_subset(case["batch_size"], fr)
             
             self.init_case(new_case)
             self.pipeline.init_telemetry()
@@ -305,26 +345,33 @@ class Bench:
                 raise 
 
             else:
-                cid = self.pipeline.tele.case['summary']["case_id"]
-                self.pipeline.tele.error("Error executing case", cid, ":", str(e))
+                cid = self.tele.ID["case_id"]
+                self.tele.error("Error executing case", cid, ":", str(e))
                 status = "Error"
 
         # except FatalError as fe:
         #     status = "Fatal" 
 
         finally:
-            self.close_case()
+            # self.close_case()
+            self.tele.end()
+            output =self.pipeline.results()
+            self.save_output(output)
 
-        return status
+            bench_data = self.tele.results()
+            self.save_case(bench_data)
+
+        return status, bench_data
 
 
-    def close_case(self):
-        self.pipeline.tele.end()
+    # def close_case(self):
+        
         #result.update(models_result)
 
 
-    def save_case(self, experiment_run):
-        case_id = experiment_run['summary']["case_id"]
+    def save_case(self, case: Case):
+        case_id = case.ID["case_id"]
+        experiment_run = case.results
         self.TELE.print(f"saving benchmark data to: {case_id}.json")
         if self.delamination:
 
@@ -336,6 +383,15 @@ class Bench:
                 self.test_recomb(experiment_run, coarse_data, fine_data, case_id)
         else: 
             self.write_config(experiment_run, f"{case_id}")
+
+
+    def save_output(self, output):
+        # TODO: should also call pipeline's function - 
+        # it's the that's supposed to know how to save the output
+        # if not defined - fall back to json save
+        case_id = self.tele.CAse.ID["case_id"]
+        self.TELE.print(f"saving output data to: {case_id}.json")
+        self.write_config(output, f"{case_id}", self.output_folder)
 
 
     def test_recomb(self, original, coarse_data, fine_data, case_id):

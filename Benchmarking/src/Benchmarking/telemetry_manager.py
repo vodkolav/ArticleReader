@@ -1,6 +1,7 @@
 
 
 from Benchmarking import utils as butils
+from Benchmarking.Case import Case
 from Benchmarking.timeutils import Time as T
 
 import os
@@ -15,6 +16,11 @@ class TelemetryManager:
     """
     Manages the collection of training and evaluation metrics.
     """
+
+    log: list
+    sensors: dict = {}
+    CAse: Case
+
     def __init__(self, log_level=logging.WARNING): # experiment_config: dict ):
         
         #self.metrics_data = experiment_config
@@ -23,9 +29,9 @@ class TelemetryManager:
         # usually track system resources, such as memory/GPU etc.
         # run on separate threads
         # not in sync with telemetry episodes/epochs
-        self.sensors = {}
+        # self.sensors = {}
 
-        self.case = {}
+        self.CAse: Case = []
 
         self.log = []
 
@@ -78,7 +84,7 @@ class TelemetryManager:
         root_logger = logging.getLogger()
         root_logger.setLevel(log_level)  # Configurable log level
         root_logger.addHandler(telemetry_handler)
- 
+
 
     @property
     def total_episodes(self):
@@ -94,10 +100,6 @@ class TelemetryManager:
         # - time-based
         # - on demand: whenever something happens (log)
         self.tot_episodes = value
-
-    @property
-    def output_root(self):
-        return self.case['summary']['output_root']
 
 
     @property
@@ -138,6 +140,8 @@ class TelemetryManager:
 
 
     def _print(self, *what, type = 'info', **kwargs):
+        if self.lastType == "ping" and type != "ping":
+            self.display("", newline=True)
         self.lastType = type
         #TODO: change this
         what = " ".join([str(w) for w in  what])
@@ -191,30 +195,8 @@ class TelemetryManager:
     def start(self, new_case):
         # Start telemetry reporting for an experiment
         #self.summary = self.case.get("summary", {})
-        self.case = new_case
+        # self.case = new_case
         self.log = []
-        case_indx = new_case["summary"]["case_index"]
-        case_sign = new_case["summary"]["case_signature"]
-
-        if case_indx == 0:
-            self.print("Starting first case in this run:\n", case_sign)
-        else:
-            sep = "=" * 100
-            self.print("\n", sep, "\nStarting next case", case_indx, ":\n", case_sign )
-
-
-
-    def case_filename(self, field = "case_id"):
-        opts = ["case_id", "case_signature"]
-        if field not in opts:
-            raise ValueError("Possible values for field are: " + str(opts)) 
-
-        case_id = self.case['summary'][field]
-        experiment_id = self.case['summary']["experiment_id"]
-        exp_dir = os.path.join(self.output_root, experiment_id)
-        os.makedirs(exp_dir, exist_ok=True)
-        pth = os.path.join(exp_dir, case_id)
-        return pth
 
 
     # def collect_episodes(self):
@@ -222,9 +204,8 @@ class TelemetryManager:
 
 
     def collect_log(self):
-        self.case = butils.upd_path(".tracks.log.data", self.case, [])
-        # FIXME: fix this ugly hack
-        self.case["tracks"]["log"]["data"] = self.log        
+        self.CAse.update_case(".tracks.log.data", self.log)
+        # TODO: make log one of the sensors? 
 
 
     def add_memory_monitor(self, func, config: dict, label):
@@ -234,26 +215,24 @@ class TelemetryManager:
         return func
 
 
-    def AttachSensor(self, obj, func_name, label, **kwargs):
+    def AttachSensor(self, obj, func_name, path, **kwargs):
 
-        level, tracks, sensor, lbl = butils.nunpack(label.split("."),4)
+        level, tracks, sensor, label = butils.nunpack(path.split("."),4)
 
         if tracks != "tracks":
-            raise ValueError("path not recognized: " + label)
-        #item = "data"
+            raise ValueError("path not recognized: " + path)
         func = getattr(obj, func_name)
-        pth = label # f"{level}{tracks}{sensor}"
 
         match sensor:
             case "harvest": 
-                config = butils.get_path(pth, self.case)
+                config = self.CAse.get_path(path)
                 from Benchmarking.sensors.Harvester import Harvester
                 snsr = Harvester(**config)
                 summ_func = getattr(obj, kwargs['summary_func'])
                 func = snsr.attach_to(func, summ_func)
 
             case "episodes": 
-                config = butils.get_path(pth, self.case)
+                config = self.CAse.get_path(path)
                 from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
                 snsr = EpisodeTracker(**config)
                 summ_func = getattr(obj, kwargs['summary_func'])
@@ -264,27 +243,29 @@ class TelemetryManager:
                 if "config" in kwargs:
                     config = kwargs["config"]
                 else:
-                    config = butils.get_path(pth, self.case, default= {})
+                    config = self.CAse.get_path(path)
                 from Benchmarking.sensors.MemoryMonitor import MemoryMonitor
                 snsr = MemoryMonitor(**config)
                 #summ_func = kwargs['summary_func']
                 func = snsr.attach_to(func)
 
             case "profile": 
-                if  label in self.sensors:
-                    snsr = self.sensors[label]
+                if  path in self.sensors:
+                    snsr = self.sensors[path]
                 else:                        
                     if "config" in kwargs:
                         config = kwargs["config"]
                     else:
-                        config = butils.get_path(pth, self.case, default= {})
+                        config = self.CAse.get_path(path)
+                        # config = butils.get_path(path, self.case, default= {})  
+                        # TODO: verify we really don't need 'default' parameter
                     from Benchmarking.sensors.MemoryProfiler import MemoryProfiler
                     snsr = MemoryProfiler(**config)
                 func = snsr.attach_to(func)
 
         setattr(obj,func_name, func)
         snsr.tele = self
-        self.sensors[label] = snsr        
+        self.sensors[path] = snsr        
 
             #case "log":  TODO: decide if me make it a sensor too. or leave it special
 
@@ -302,13 +283,13 @@ class TelemetryManager:
             if "profile" in k and sens_summary['data']!=[]:
                 self.save_other(sens_summary)
 
-            self.case = butils.upd_path(k, self.case, sens_summary)
+            self.CAse.update_case(k, sens_summary)
 
 
     def save_other(self,v):
         #TODO:temporary hack, shold be intergrated into resilient monitor
         data = v["data"]
-        cid = self.case["summary"]["case_id"]
+        cid = self.CAse.summary["case_id"]
         pth = f"dbg/{cid}"
         os.makedirs(pth, exist_ok=True)      
 
@@ -318,25 +299,22 @@ class TelemetryManager:
             with open(pth + f"/{fnm}_{id}.prof", "w+") as fl:
                 fl.write(prof["profile_log"])
 
+
     def end(self):
         # Optional: Print end message
         self.collect_sensors()
-        #self.collect_episodes()        
-        # alg_name = self.algorithm["name"]
-        #nm = self.summary["experiment_id"]
-        #self.report(f"\n {nm} ended. Total episodes recorded: {len(self.episodes)}", newline=True)
         self.collect_log()
-        
+
         # create a report
-        self.case['summary']["end_time"] = T.now()
 
-        case_indx = self.case["summary"]["case_index"]
-        case_sign = self.case["summary"]["case_signature"]
-
+        case_indx = self.CAse.ID["case_index"]
+        case_sign = self.CAse.ID["case_signature"]
+        self.CAse.summary["end_time"] = T.now()
         self.print("Case", case_indx, "Done:\n", case_sign )
 
+
     def results(self):
-        return deepcopy(self.case)
+        return deepcopy(self.CAse)
 
 
     def progress(self, message = ""):

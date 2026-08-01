@@ -3,6 +3,9 @@ from Benchmarking.telemetry_manager import TelemetryManager
 
 class Pipeline:
 
+    tele: TelemetryManager
+    initializers: dict
+
     def __init__(self, output_dir = "output", 
                  checkpoints_dir="checkpoints", 
                  patt = "*"):
@@ -14,7 +17,7 @@ class Pipeline:
         pass
     
     @abstractmethod
-    def results(self):
+    def output(self):
         pass
 
     @abstractmethod
