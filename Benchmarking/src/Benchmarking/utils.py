@@ -311,7 +311,7 @@ def read_json(filepath):
     return caSe
 
 
-def write_json(caSe, filepath, sort_keys = False, mode = 'w'):
+def write_json(caSe: dict, filepath, sort_keys = False, mode = 'w'):
     """Writes experiment configurations to a JSON file"""
     try:
         with open(filepath, mode) as f:

@@ -192,12 +192,6 @@ class TelemetryManager:
             self._print(*what, type= 'ping', newline=True)
 
 
-    def start(self, new_case):
-        # Start telemetry reporting for an experiment
-        #self.summary = self.case.get("summary", {})
-        # self.case = new_case
-        self.log = []
-
 
     # def collect_episodes(self):
     #     self.case["tracks"]["episodes"]["data"] = self.episodes
@@ -228,8 +222,8 @@ class TelemetryManager:
                 config = self.CAse.get_path(path)
                 from Benchmarking.sensors.Harvester import Harvester
                 snsr = Harvester(**config)
-                summ_func = getattr(obj, kwargs['summary_func'])
-                func = snsr.attach_to(func, summ_func)
+                # summ_func = getattr(obj, kwargs['summary_func'])
+                func = snsr.attach_to(func)
 
             case "episodes": 
                 config = self.CAse.get_path(path)
@@ -300,21 +294,8 @@ class TelemetryManager:
                 fl.write(prof["profile_log"])
 
 
-    def end(self):
-        # Optional: Print end message
-        self.collect_sensors()
-        self.collect_log()
-
-        # create a report
-
-        case_indx = self.CAse.ID["case_index"]
-        case_sign = self.CAse.ID["case_signature"]
-        self.CAse.summary["end_time"] = T.now()
-        self.print("Case", case_indx, "Done:\n", case_sign )
-
-
     def results(self):
-        return deepcopy(self.CAse)
+        return deepcopy(self.CAse.results)
 
 
     def progress(self, message = ""):

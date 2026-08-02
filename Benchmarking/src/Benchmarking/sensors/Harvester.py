@@ -40,14 +40,14 @@ class Harvester:
 
 
 
-    def attach_to(self, dump_func, summary_func):
+    def attach_to(self, dump_func):
 
         def wrapper(*args, **kwargs):
 
             try:
                 # self.record["start_time"] = T.now()
                 output = dump_func(*args, **kwargs)  # Run the original forward pass                    
-                i_episode = summary_func(mode="index")
+                # i_episode = summary_func(mode="index")
 
             except Exception as e:
                 self.tele.print(str(e), "Cause:",  str(e.__cause__))

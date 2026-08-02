@@ -75,8 +75,8 @@ class Case:
             raise ValueError("Possible values for field are: " + str(opts))
 
         case_id = self.ID[field]
-        experiment_id = self.summary["experiment_id"]
-        exp_dir = os.path.join(self.summary['output_root'], experiment_id)
+        experiment_id = self.ID["experiment_id"]
+        exp_dir = os.path.join(self.ID['output_root'], experiment_id)
         os.makedirs(exp_dir, exist_ok=True)
         pth = os.path.join(exp_dir, case_id)
         return pth

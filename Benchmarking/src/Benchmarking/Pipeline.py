@@ -6,6 +6,10 @@ class Pipeline:
     tele: TelemetryManager
     initializers: dict
 
+    @property
+    def results(self):
+        pass
+
     def __init__(self, output_dir = "output", 
                  checkpoints_dir="checkpoints", 
                  patt = "*"):

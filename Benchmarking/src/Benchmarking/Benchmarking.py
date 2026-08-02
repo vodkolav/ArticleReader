@@ -20,7 +20,11 @@ class Bench:
 
     tele: TelemetryManager # telemetry for current case
 
+    case: Case
+
     TELE: TelemetryManager # telemetry for the whole experiment
+
+    i: int
 
     @property
     def bench_folder(self):
@@ -197,10 +201,28 @@ class Bench:
         return caSe
 
 
-    def write_config(self, caSe, filename, path = None, sort_keys = False, mode = 'x'):
+    def write_config(self, caSe: dict, filename, path = None, sort_keys = False, mode = 'x'):
         path = path if path else self.bench_folder 
-        config_filepath = os.path.join(path, f"{filename}.json")
-        write_json(caSe, config_filepath, sort_keys=sort_keys, mode = mode)
+
+        if self.delamination:
+
+            coarse_data, fine_data = delaminate(caSe, self.pipeline.delamination_spec)
+
+            write_json(coarse_data, 
+                       os.path.join(path, f"{filename}.coarse.json"),
+                       sort_keys=sort_keys, mode = mode)
+
+            write_json(fine_data, 
+                       os.path.join(path, f"{filename}.fine.json"),
+                       sort_keys=sort_keys, mode = mode)
+
+            if self.test_recombination:
+                self.test_recomb(caSe, coarse_data, fine_data, filename)
+        else: 
+            write_json(caSe,
+                       os.path.join(path, f"{filename}.json"),
+                       sort_keys=sort_keys, mode = mode)
+
 
 
     def addresil(self, new_case):
@@ -208,9 +230,11 @@ class Bench:
             new_case['tracks']['resources']['resilient'] = "dbg/" 
 
 
-    def stamp_case(self,i,newcase: Case):
+    def stamp_case(self, newcase: Case):
         # assigns all the ids and timestamps to the case
         # those depend on time of run of the case
+        self.log = []
+
         run_epoch = T.now()
 
         tstp = T.timestamp(run_epoch)
@@ -237,10 +261,9 @@ class Bench:
             "case_signature": case_sign,
             "case_id": case_sign +"."+ tstp,
             "run_id": case_sign +"."+ tstp,
-            "case_index": i, 
+            "case_index": self.i, 
             "output_root": self.output_root,
         }
-
 
         summary = {
             "start_time": run_epoch,
@@ -250,7 +273,7 @@ class Bench:
         newcase.update_case(".summary", summary)
         newcase.update_case(".ID", ID)
 
-        if i == 0:
+        if self.i == 0:
             self.tele.print("Starting first case in this run:\n", 
                             newcase.case_signature)
         else:
@@ -266,21 +289,19 @@ class Bench:
         # sequentially
         # init the pipeline
 
-        i = 0 
+        self.i = 0 
 
         while bool(self.TODOcases):
 
             # pop until empty
             newCase = self.TODOcases.pop(0)
 
-            newCase = self.stamp_case(i, newCase)
-
-            status, newCaseExecuted = self.execute_case(newCase)
+            status = self.execute_case(newCase)
             
             #dump the TELE of the bench to disk after every case - 
             #otherwise if run fails at some case, the whole bench log is lost
             self.TELE.collect_log()
-            self.write_config(self.TELE.results().results, "experiment", mode='w+')
+            self.write_config(self.TELE.results(), "experiment", mode='w+')
 
             if status == "Fatal":
                 self.TELE.error("fatal error in run_case. aborting run")
@@ -288,23 +309,29 @@ class Bench:
                 return
                 # TODO: make it graceful
 
-            self.DONEcases += [newCaseExecuted]
+            self.save_case(newCase) # not really
+
+            self.save_output()
+
+            self.DONEcases += [self.tele.results()]
+
+            self.i+=1
 
         self.TELE.print("Benchmark run complete!")
-        self.TELE.end()       
-        self.write_config(self.TELE.results().results, "experiment", mode='w+')
+        self.write_config(self.TELE.results(), "experiment", mode='w+')
 
 
     def init_case(self, new_case: Case):
         # self.tele.start(new_case)
 
-        if self.tele.CAse.config == new_case.config:
-            self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
-        
+
         force = False
         if not self.tele.CAse:
             self.tele.CAse = new_case
             force = True  # first run, so all initializers must run
+
+        elif self.tele.CAse.config == new_case.config:
+            self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
 
         #Check for all initializers, whether their value changed and 
         #re-init whichever have and all their downstream initializers
@@ -334,64 +361,60 @@ class Bench:
 
     def execute_case(self, new_case):
         try:
-            
-            self.init_case(new_case)
-            self.pipeline.init_telemetry()
+            new_case = self.stamp_case(new_case)    
+            self.init_case(new_case)  # deals with configs
+            self.pipeline.init_telemetry() # deals with tracks
             self.pipeline.run_case()
             status = "Ok"
 
         except Exception as e:
+
+            cid = self.tele.ID["case_id"]
+            self.tele.error("Error executing case", cid, ":", str(e))
+            status = "Error"
+            #TODO: Set the case.summary.status to 'error', so that it can be queried in the final report data
+
             if self.onerror == "fail":
                 raise 
 
-            else:
-                cid = self.tele.ID["case_id"]
-                self.tele.error("Error executing case", cid, ":", str(e))
-                status = "Error"
-
-        # except FatalError as fe:
-        #     status = "Fatal" 
 
         finally:
-            # self.close_case()
-            self.tele.end()
-            output =self.pipeline.results()
-            self.save_output(output)
-
-            bench_data = self.tele.results()
-            self.save_case(bench_data)
-
-        return status, bench_data
+            #TODO: these might fail as well. handle that gracefully
+            self.close_case()
+            self.pipeline.post_case()
+        return status
 
 
-    # def close_case(self):
+    def close_case(self):
         
         #result.update(models_result)
+        self.tele.CAse.summary["end_time"] = T.now()
+        self.tele.collect_sensors()
+        self.tele.collect_log()
+        case_indx = self.tele.CAse.ID["case_index"]
+        case_sign = self.tele.CAse.ID["case_signature"]
+        self.tele.print("Case", case_indx, "Done:\n", case_sign )
 
 
     def save_case(self, case: Case):
-        case_id = case.ID["case_id"]
-        experiment_run = case.results
+        #case_id = case.ID["case_id"]
+        #experiment_run = case.results
+        newCaseExecuted = self.tele.results()
+        case_id = self.tele.CAse.ID["case_id"]
+
+        self.write_config(newCaseExecuted, f"{case_id}.json", self.bench_folder)
         self.TELE.print(f"saving benchmark data to: {case_id}.json")
-        if self.delamination:
-
-            coarse_data, fine_data = delaminate(experiment_run, self.pipeline.delamination_spec)
-            self.write_config(coarse_data, f"{case_id}.coarse")
-            self.write_config(fine_data, f"{case_id}.fine")
-
-            if self.test_recombination:
-                self.test_recomb(experiment_run, coarse_data, fine_data, case_id)
-        else: 
-            self.write_config(experiment_run, f"{case_id}")
 
 
-    def save_output(self, output):
+
+    def save_output(self):
         # TODO: should also call pipeline's function - 
         # it's the that's supposed to know how to save the output
         # if not defined - fall back to json save
+        output = self.pipeline.results()
         case_id = self.tele.CAse.ID["case_id"]
-        self.TELE.print(f"saving output data to: {case_id}.json")
-        self.write_config(output, f"{case_id}", self.output_folder)
+        self.TELE.print(f"saving output data to: {self.output_folder}/{case_id}.json")
+        self.write_config(output, f"{case_id}.json", self.output_folder)
 
 
     def test_recomb(self, original, coarse_data, fine_data, case_id):
