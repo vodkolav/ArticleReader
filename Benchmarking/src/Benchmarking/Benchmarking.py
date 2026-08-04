@@ -16,6 +16,8 @@ logging.basicConfig(level=logging.INFO )
 
 class Bench:
 
+    #TODO: support multiple runs of an experiment?
+
     pipeline: Pipeline
 
     tele: TelemetryManager # telemetry for current case
@@ -26,16 +28,20 @@ class Bench:
 
     i: int
 
+    DONEcases: list = []
+
+    TODOcases: list = []
+
+
     @property
     def bench_folder(self):
         return os.path.join(self.benchmarks_root, self.experiment_id)
+
 
     @property
     def output_folder(self):
         return os.path.join(self.output_root, self.experiment_id)
 
-
-#TODO: support multiple runs of an experiment?
 
     def __init__(self, benchmarks_root = "benchmark",
                        output_root = "output", 
@@ -44,7 +50,7 @@ class Bench:
                        onerror = "skip"):
         
         self.onerror = onerror
-        self.TELE = TelemetryManager()       
+        self.TELE = TelemetryManager()
         # self.TELE.start(self.config)
     
         self.output_root = output_root
@@ -87,14 +93,17 @@ class Bench:
     def configure(self, pipeline: Pipeline):
         
         telemetry = TelemetryManager()
+        telemetry.intercept_logging(log_level=logging.WARNING)
         pipeline.set_telemetry(telemetry)
         self.pipeline = pipeline
         self.tele = telemetry
         # get template case from pipeline
 
+
     @property
     def grid(self):
         return self.config["grid"] if "grid" in self.config else {}
+
 
     @grid.setter
     def grid(self, val):
@@ -187,7 +196,6 @@ class Bench:
         self.TELE.print(f"loaded {len(self.DONEcases)} files from:" + str( pth.absolute()))
 
 
-
     def summary(Cases):
         jn = pd.json_normalize(Cases)
         jnu = jn.nunique()
@@ -224,16 +232,76 @@ class Bench:
                        sort_keys=sort_keys, mode = mode)
 
 
-
     def addresil(self, new_case):
         if 'tracks' in new_case:
             new_case['tracks']['resources']['resilient'] = "dbg/" 
 
 
+    def run_experiments(self, force = False):
+        # sequentially
+        # init the pipeline
+
+        self.TELE.print(f"BEGIN Running {len(self.TODOcases)} cases in experiment {self.experiment_id}.")
+        self.i = 0 
+
+        while bool(self.TODOcases):
+            self.tele.reset_log()
+            # pop until empty
+            newCase = self.TODOcases.pop(0)
+
+            status = self.execute_case(newCase)
+            
+            #dump the TELE of the bench to disk after every case - 
+            #otherwise if run fails at some case, the whole bench log is lost
+            self.TELE.collect_log()
+            self.write_config(self.TELE.results(), "experiment", mode='w+')
+
+            if status == "Fatal":
+                self.TELE.error("fatal error in run_case. aborting run")
+                self.TODOcases += newCase
+                return
+                # TODO: make it graceful
+
+            self.save_case(newCase) # not really
+
+            self.save_output()
+
+            self.DONEcases += [self.tele.results()]
+
+            self.i+=1
+
+        self.TELE.print("Benchmark run complete!")
+        self.write_config(self.TELE.results(), "experiment", mode='w+')
+
+
+    def execute_case(self, new_case):
+        try:
+            new_case = self.stamp_case(new_case)    
+            self.init_case(new_case)  # deals with configs
+            self.pipeline.init_telemetry() # deals with tracks
+            self.pipeline.run_case()
+            status = "Ok"
+
+        except Exception as e:
+
+            cid = self.tele.CAse.ID["case_id"]
+            self.tele.error("Error executing case", cid, ":", str(e))
+            status = "Error"
+            #TODO: Set the case.summary.status to 'error', so that it can be queried in the final report data
+
+            if self.onerror == "fail":
+                raise 
+
+        finally:
+            #TODO: these might fail as well. handle that gracefully
+            self.close_case()
+            self.pipeline.post_case()
+        return status
+
+
     def stamp_case(self, newcase: Case):
         # assigns all the ids and timestamps to the case
         # those depend on time of run of the case
-        self.log = []
 
         run_epoch = T.now()
 
@@ -279,46 +347,10 @@ class Bench:
         else:
             sep = "=" * 100
             self.tele.print("\n", sep, "\nStarting next case", 
-                            newcase.case_index, 
+                            newcase.ID['case_index'], 
                             ":\n", newcase.case_signature )
 
         return newcase
-
-
-    def run_experiments(self, force = False):
-        # sequentially
-        # init the pipeline
-
-        self.i = 0 
-
-        while bool(self.TODOcases):
-
-            # pop until empty
-            newCase = self.TODOcases.pop(0)
-
-            status = self.execute_case(newCase)
-            
-            #dump the TELE of the bench to disk after every case - 
-            #otherwise if run fails at some case, the whole bench log is lost
-            self.TELE.collect_log()
-            self.write_config(self.TELE.results(), "experiment", mode='w+')
-
-            if status == "Fatal":
-                self.TELE.error("fatal error in run_case. aborting run")
-                self.TODOcases += newCase
-                return
-                # TODO: make it graceful
-
-            self.save_case(newCase) # not really
-
-            self.save_output()
-
-            self.DONEcases += [self.tele.results()]
-
-            self.i+=1
-
-        self.TELE.print("Benchmark run complete!")
-        self.write_config(self.TELE.results(), "experiment", mode='w+')
 
 
     def init_case(self, new_case: Case):
@@ -359,32 +391,6 @@ class Bench:
         self.tele.CAse = new_case
 
 
-    def execute_case(self, new_case):
-        try:
-            new_case = self.stamp_case(new_case)    
-            self.init_case(new_case)  # deals with configs
-            self.pipeline.init_telemetry() # deals with tracks
-            self.pipeline.run_case()
-            status = "Ok"
-
-        except Exception as e:
-
-            cid = self.tele.ID["case_id"]
-            self.tele.error("Error executing case", cid, ":", str(e))
-            status = "Error"
-            #TODO: Set the case.summary.status to 'error', so that it can be queried in the final report data
-
-            if self.onerror == "fail":
-                raise 
-
-
-        finally:
-            #TODO: these might fail as well. handle that gracefully
-            self.close_case()
-            self.pipeline.post_case()
-        return status
-
-
     def close_case(self):
         
         #result.update(models_result)
@@ -404,7 +410,6 @@ class Bench:
 
         self.write_config(newCaseExecuted, f"{case_id}.json", self.bench_folder)
         self.TELE.print(f"saving benchmark data to: {case_id}.json")
-
 
 
     def save_output(self):

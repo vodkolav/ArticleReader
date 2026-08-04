@@ -219,9 +219,31 @@ def upd_path(path, host, guest):
 
     path = path.strip(".").split(".")
 
-    guest = bury(path,guest)
+    set_path(path, host, guest)
+    # guest = bury(path,guest)
+    # return merge_dicts(guest, host)
 
-    return merge_dicts(guest, host)
+
+def set_path(path, host, guest):
+    p = path[0]
+    if isinstance(p,str) and "[" in p: #it's a list index, like "sim[3]"
+        k,i = p.split("[")
+        i = int(i.split("]")[0])
+        if len(path) > 1:
+            c = [i] + path[1:] # dive deeper
+            set_path(c, host[k],  guest)
+        elif len(host) == i: # verify we're appending right after the last item, not inserting at random place
+            host += [guest]
+        else:
+            raise ValueError(f"Index {i} is out of bounds for host of length {len(host)}")
+    else: # it's a dict key
+        if len(path) > 1:
+            v = host[p]
+            c = path[1:]
+            set_path(c, v, guest) 
+        else: 
+            host[p] = guest
+        
 
 
 def bury(where, what):
@@ -260,7 +282,7 @@ def span_grid(grid, templ):
         caSe[cidp] = signature_fmt(siGn)
         # brpt_anchr(k, 'meta.chunk_length')
         for k,v in caSe.items():
-            t = upd_path(k, t, v)
+            upd_path(k, t, v)
         cases.append(t) 
     return cases
 

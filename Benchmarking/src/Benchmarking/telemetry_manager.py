@@ -5,67 +5,89 @@ from Benchmarking.Case import Case
 from Benchmarking.timeutils import Time as T
 
 import os
-
+import numpy as np
 import logging
 from copy import deepcopy
+
+
+class DummyTelemetryManager:
+    # TODO: maybe make it an abstract base class, and have TelemetryManager inherit from it.
+    def __init__(self):
+        pass
+
+    def print(self, entry: dict):
+        pass
+
+    def error(self):
+        pass
+
+    def ping(self):
+        pass
 
 
 class TelemetryManager:
     #TODO: rename to just Telemetry
     #TODO: implement proper logging
+    #TODO: implement progression percentage of individual cases and the whole experiment
     """
     Manages the collection of training and evaluation metrics.
     """
 
     log: list
     sensors: dict = {}
-    CAse: Case
+    _CAse: Case
+
+    @property
+    def CAse(self):
+        return self._CAse
+
+    @CAse.setter
+    def CAse(self, value):
+        # if not isinstance(value, Case):
+        #     raise ValueError("CAse must be an instance of Case class.")
+        self._CAse = value
+
+        #TODO: kinda ugly, should use json paths
+        # also should think about whole lifecycle of the log (and other tracked data)
+        # when it's loaded from previous runs and continued. 
+        # including re-run of individual cases.
+
+        log = self.CAse.tracks.get("log",None)
+        if log: 
+            self.log = log.get("data", []) 
+
 
     def __init__(self, log_level=logging.WARNING): # experiment_config: dict ):
-        
-        #self.metrics_data = experiment_config
 
         # sensors are independent components that 
         # usually track system resources, such as memory/GPU etc.
         # run on separate threads
         # not in sync with telemetry episodes/epochs
-        # self.sensors = {}
 
-        self.CAse: Case = []
+        self._CAse: Case = []
 
         self.log = []
 
-        #self.summary = {}
-
         self.lastType = "info"
-
 
         #TODO: define float format, ex: Avg Reward (last 100): {avg_reward:.2f}
 
         #self.tstp_format = "%Y%m%d-%H%M%S-%f"
         self.tstp_format = "%Y%m%d-%H%M%S"
 
-        # self.env = experiment_config["env"]
 
-        #self.algorithm = experiment_config["algorithm"]
-        
-        #self.strategy = experiment_config["strategy"]
-        # if we start counting samples from 0, then 
-        # the one before it is -1
-        self.last_sample = -1 
-        self.tot_episodes = 0
+    def intercept_logging(self, log_level=logging.WARNING):
+        """enables interception of all system logs by this telemetry.
 
-        #limit = self.meta.get("telemetry_episodes_limit", 100)
-        limit = 100
-        self.samplePoints = list(range(limit))
+        Args:
+            log_level (_type_, optional): logging level to intercept. Defaults to logging.WARNING.
+        """
 
-        # Use defaultdicts to store lists of metrics per episode/step
-        
-        #self.algorithm_specific_metrics = dict(list) # For things like TD error, policy change
+        self.print("TelemetryManager: intercepting system logs at level:", logging.getLevelName(log_level))
 
-        #self.reset_episode(0)
-
-        
+        NPERRSTATE = 'warn'
+        # This acts as the global safety net across your entire app 
+        np.seterr(divide=NPERRSTATE, invalid=NPERRSTATE, over=NPERRSTATE, under=NPERRSTATE)
         # 2. Redirect standard warnings into the logging framework
         logging.captureWarnings(True)
 
@@ -83,51 +105,17 @@ class TelemetryManager:
         # 5. Attach the handler to the Root Logger
         root_logger = logging.getLogger()
         root_logger.setLevel(log_level)  # Configurable log level
+
+        # REMOVE CONSOLE DOUBLE-PRINTING:
+        # Wipe out any default handlers (like StreamHandler) that Python auto-creates
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
         root_logger.addHandler(telemetry_handler)
 
 
-    @property
-    def total_episodes(self):
-        return self.tot_episodes
-
-    @total_episodes.setter
-    def total_episodes(self, value):
-
-
-        #TODO: implement different forms of scheduling reports
-        # - total episodes to report (requires how many total episodes will be)
-        # - once every x episodes (frequency)
-        # - time-based
-        # - on demand: whenever something happens (log)
-        self.tot_episodes = value
-
-
-    @property
-    def mode(self):
-        return "Training" if self._current_episode["is_training"] else "Evaluating"
-
-
-
-    # def reset_episode(self, i_episode):
-    #     """Resets metrics for a new episode."""
-    #     self.i_episode = i_episode
-    #     self._current_episode = { 
-    #         "i": i_episode,             
-    #         "reward": 0,
-    #         "length": 0,
-    #         "replay": [],
-    #         "info": [],
-    #         "internal_state":{}, 
-    #         "start": time.time()
-    #     } 
-
-    #def record_step(self, reward: float, info: dict = None, frame=None):
-
-
-        #self._current_episode["info"].append(info if info is not None else {})
-        # You can record other step-specific info if needed from the 'info' dict
-
-
+    def reset_log(self):
+        self.log = []
 
 
     def print(self, *what):
@@ -192,21 +180,10 @@ class TelemetryManager:
             self._print(*what, type= 'ping', newline=True)
 
 
-
-    # def collect_episodes(self):
-    #     self.case["tracks"]["episodes"]["data"] = self.episodes
-
-
     def collect_log(self):
+        self.CAse.update_case(".tracks.log", {})
         self.CAse.update_case(".tracks.log.data", self.log)
         # TODO: make log one of the sensors? 
-
-
-    def add_memory_monitor(self, func, config: dict, label):
-        monitor = MemoryMonitor(**config)
-        func = monitor.attach_to(func)
-        self.sensors[label] = monitor
-        return func
 
 
     def AttachSensor(self, obj, func_name, path, **kwargs):
@@ -263,12 +240,6 @@ class TelemetryManager:
 
             #case "log":  TODO: decide if me make it a sensor too. or leave it special
 
-    def add_EpisodeTracker(self, ep_func, summ_func, config: dict, label):
-        trckr = EpisodeTracker(**config)
-        ep_func = trckr.attach_to(ep_func, summ_func)
-        self.sensors[label] = trckr
-        return ep_func
-
 
     def collect_sensors(self):
 
@@ -298,13 +269,6 @@ class TelemetryManager:
         return deepcopy(self.CAse.results)
 
 
-    def progress(self, message = ""):
-        # TODO implement progression percentage of individual cases
-        # Optional: Print progress
-        if self.i_episode in self.samplePoints:            
-            msg = f"\r {self.mode} Episode {self.i_episode}/{self.total_episodes}" + message
-            self.display(msg)
-
 
 class TelemetryManagerHandler(logging.Handler):
     """
@@ -325,7 +289,7 @@ class TelemetryManagerHandler(logging.Handler):
         # TODO: make it proper
         
         entry = {
-            "message" : record.message,
+            "what" : message,
             "type" : record.levelname.lower(),
             "time" : record.created,
             "source": record.name # 'speechbrain.utils.fetching'
@@ -334,5 +298,5 @@ class TelemetryManagerHandler(logging.Handler):
 
         # Pass the formatted message and/or the raw record to your manager
         # The exact method call depends on your manager's API
-        self.manager.Log(entry)
+        self.manager._print(**entry)
 

@@ -22,32 +22,30 @@ class Case:
 
 
     @property
-    def config(self):
+    def config(self) -> dict:
         return self.case["config"]
 
     @property
-    def ID(self):
+    def ID(self) -> dict:
         return self.case["ID"]
 
     @property
-    def tracks(self):
+    def tracks(self) -> dict:
         return self.case["tracks"]
 
     @property
-    def summary(self):
+    def summary(self) -> dict:
         return self.case["summary"]
 
     @property
-    def case_signature(self):
+    def case_signature(self) -> dict:
         return self.ID["case_signature"]
 
 
     @property
-    def results(self):
+    def results(self) -> dict:
         #TODO check if tracks are collected from tele
         return self.case
-
-
 
 
     def __eq__(self, other):
@@ -59,9 +57,8 @@ class Case:
 
 
     def update_case(self, key, value):
-        # TODO: kinda ugly, should update in place, 
-        # not overwrite the whole dict
-        self.case = upd_path(key, self.case, value)
+        upd_path(key, self.case, value)
+
 
     def get_path(self, path):
         path = path.strip(".").split(".")
