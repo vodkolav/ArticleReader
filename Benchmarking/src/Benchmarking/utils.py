@@ -404,6 +404,9 @@ def shape(value):
                     l, r = ("[", "]")
                 else:                           # probably str, can't dive in 
                     l, r = ("(", ")")
+
+            elif hasattr(value, '__jobj__') and callable(value.__jobj__): # json serializable, can dive in
+                        return  shape(value.__jobj__())
             else:
                 raise ValueError("Scary, very scary, we don't know what that is. If we knew wat that is, we don't know what that is. ")
     else:
@@ -440,6 +443,36 @@ def dig(subst, f):
     return  summ
 
 
+
+def TrackWithID(CAses: list[dict], track: str):
+    """ extracts track data with its' case identifiers 
+
+    Args:
+        CAses (list[dict]): a json object representing Case
+        track (str): track label
+
+    Returns:
+        list[dict]: _description_
+    """
+
+    query = f"""
+    map(
+      . as $obj
+      | ($obj.ID) as $ID
+      | $obj.tracks.{track}.data
+      | map(. + {{
+          case_id: $ID.case_id,
+          experiment_id: $ID.experiment_id,
+          case_signature: $ID.case_signature,
+          case_index: $ID.case_index
+        }})
+    ) | add
+    """
+    trackdata = jq.compile(query).input(CAses).first()
+
+    return trackdata
+
+
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types 
         taken from https://stackoverflow.com/a/49677241/7097017
@@ -454,3 +487,11 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+
+
+class JsonObjectEncoder(json.JSONEncoder):
+    def default(self, obj):
+        # Look for the structural conversion method
+        if hasattr(obj, '__jobj__') and callable(obj.__jobj__):
+            return obj.__jobj__()
+        return super().default(obj)

@@ -24,6 +24,9 @@ class DummyTelemetryManager:
     def ping(self):
         pass
 
+    def warning(self):
+        pass
+
 
 class TelemetryManager:
     #TODO: rename to just Telemetry
@@ -128,11 +131,11 @@ class TelemetryManager:
 
 
     def _print(self, *what, type = 'info', **kwargs):
-        if self.lastType == "ping" and type != "ping":
-            self.display("", newline=True)
-        self.lastType = type
-        #TODO: change this
+
+        #TODO: make this make sense
         what = " ".join([str(w) for w in  what])
+
+        what = what + kwargs['message'] if 'message' in kwargs else what
 
         time = kwargs["time"] if 'time' in kwargs else T.now()
         entry = {
@@ -140,10 +143,22 @@ class TelemetryManager:
             "time": time,
             "message": what,
             }
+        
+        if 'source' in kwargs:
+            entry['source'] = kwargs['source']
+
         self.Log(entry)
 
         nl = kwargs["newline"] if 'newline' in kwargs else True
-        self.display(self.format_entry(entry), newline=nl)
+
+        message = self.format_entry(entry)
+
+        if self.lastType == "ping" and type != "ping":
+            message ="\n" + message
+            # self.display("", newline=True)
+
+        self.display(message, newline=nl)
+        self.lastType = type
 
 
     def warning(self, *what):
@@ -162,7 +177,7 @@ class TelemetryManager:
         newentry = entry.copy()
         newentry['timestamp'] = T.timestamp(newentry['time'])
         disp = "[{type}] {timestamp}: {message}"
-        return disp.format(**newentry)
+        return disp.format(**newentry).replace("\n", " ")
 
 
     def display(self, what, newline = False) -> None:
@@ -176,8 +191,8 @@ class TelemetryManager:
         if self.lastType == 'ping':
             self._print(*what, type= 'ping', newline=False)
         else:
-            self.lastType = 'ping'
             self._print(*what, type= 'ping', newline=True)
+        self.lastType = 'ping'
 
 
     def collect_log(self):
@@ -289,7 +304,7 @@ class TelemetryManagerHandler(logging.Handler):
         # TODO: make it proper
         
         entry = {
-            "what" : message,
+            "message" : message,
             "type" : record.levelname.lower(),
             "time" : record.created,
             "source": record.name # 'speechbrain.utils.fetching'

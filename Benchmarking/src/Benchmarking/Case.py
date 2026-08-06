@@ -1,10 +1,10 @@
 import os
 from Benchmarking.utils import get_path, upd_path
 
-class Case:
+class Case(dict):
 
 
-    case: dict
+    # case: dict
 
     # config: dict = {}
     # ID: dict = {}
@@ -14,7 +14,8 @@ class Case:
     def __init__(self, case: dict):
         #TODO: make checks:
         # case has all required fields
-        self.case = case
+        for k,v in case.items():
+            self[k] = v
 
     # @property
     # def case_index(self):
@@ -23,19 +24,19 @@ class Case:
 
     @property
     def config(self) -> dict:
-        return self.case["config"]
+        return self["config"]
 
     @property
     def ID(self) -> dict:
-        return self.case["ID"]
+        return self["ID"]
 
     @property
     def tracks(self) -> dict:
-        return self.case["tracks"]
+        return self["tracks"]
 
     @property
     def summary(self) -> dict:
-        return self.case["summary"]
+        return self["summary"]
 
     @property
     def case_signature(self) -> dict:
@@ -45,24 +46,24 @@ class Case:
     @property
     def results(self) -> dict:
         #TODO check if tracks are collected from tele
-        return self.case
+        return self
 
 
     def __eq__(self, other):
         return self.case_signature == other.case_signature
 
-    
-    def __pos__(self):
-        return True
+
+    def __jobj__(self) -> dict:
+        return self
 
 
     def update_case(self, key, value):
-        upd_path(key, self.case, value)
+        upd_path(key, self, value)
 
 
     def get_path(self, path):
         path = path.strip(".").split(".")
-        val = get_path(path, self.case)
+        val = get_path(path, self)
         return val
 
 
