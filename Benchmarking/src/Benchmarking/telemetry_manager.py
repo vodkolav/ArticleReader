@@ -7,6 +7,7 @@ from Benchmarking.timeutils import Time as T
 import os
 import numpy as np
 import logging
+import traceback
 from copy import deepcopy
 
 
@@ -15,16 +16,16 @@ class DummyTelemetryManager:
     def __init__(self):
         pass
 
-    def print(self, entry: dict):
+    def print(self, *what):
         pass
 
-    def error(self):
+    def error(self, *what):
         pass
 
-    def ping(self):
+    def ping(self, *what):
         pass
 
-    def warning(self):
+    def warning(self, *what):
         pass
 
 
@@ -50,14 +51,18 @@ class TelemetryManager:
         #     raise ValueError("CAse must be an instance of Case class.")
         self._CAse = value
 
+        try:
+            incoming_log = self._CAse.get_path(".tracks.log.data")
+        except:
+            incoming_log = []
+
+        self.log = incoming_log + self.log
+
         #TODO: kinda ugly, should use json paths
         # also should think about whole lifecycle of the log (and other tracked data)
         # when it's loaded from previous runs and continued. 
         # including re-run of individual cases.
 
-        log = self.CAse.tracks.get("log",None)
-        if log: 
-            self.log = log.get("data", []) 
 
 
     def __init__(self, log_level=logging.WARNING): # experiment_config: dict ):
@@ -67,7 +72,7 @@ class TelemetryManager:
         # run on separate threads
         # not in sync with telemetry episodes/epochs
 
-        self._CAse: Case = []
+        self._CAse: Case = {}
 
         self.log = []
 
@@ -147,6 +152,9 @@ class TelemetryManager:
         if 'source' in kwargs:
             entry['source'] = kwargs['source']
 
+        if 'traceback' in kwargs:
+            entry['traceback'] = kwargs['traceback']
+
         self.Log(entry)
 
         nl = kwargs["newline"] if 'newline' in kwargs else True
@@ -166,7 +174,17 @@ class TelemetryManager:
 
 
     def error(self, *what):
-        self._print(*what, type = "error")
+
+        gotExceptions = [isinstance(w,Exception) for w in what]
+        kwargs = {}
+        if any(gotExceptions):
+            i = gotExceptions.index(1)
+            what = list(what)
+            ex = what.pop(i)
+            trace = '\n'.join(traceback.format_tb(ex.__traceback__))
+            kwargs = {"traceback": trace} 
+
+        self._print(*what, type = "error", **kwargs)
 
 
     def debug(self, *what):

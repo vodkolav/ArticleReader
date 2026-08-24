@@ -177,6 +177,8 @@ cidp = ".ID.case_signature"
 
 
 def get_path(path, jsobj):
+    #TODO: currently this supports lists only in the end of path: .a.b.c.d[3] 
+    # need to support it anywhere, e.g. '.a.b[4].c.d  
     k = path[0]
     if isinstance(k,str) and "[" in k:
         k,b = k.split("[")

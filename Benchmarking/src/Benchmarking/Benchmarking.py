@@ -245,7 +245,7 @@ class Bench:
         self.i = 0 
 
         while bool(self.TODOcases):
-            self.tele.reset_log()
+            # self.tele.reset_log() # TODO: check why this doesn't work - every new case continues to write the log where previous left off 
             # pop until empty
             newCase = self.TODOcases.pop(0)
 
@@ -258,7 +258,7 @@ class Bench:
 
             if status == "Fatal":
                 self.TELE.error("fatal error in run_case. aborting run")
-                self.TODOcases += newCase
+                # self.TODOcases += newCase
                 return
                 # TODO: make it graceful
 
@@ -285,7 +285,7 @@ class Bench:
         except Exception as e:
 
             cid = self.tele.CAse.ID["case_id"]
-            self.tele.error("Error executing case", cid, ":", str(e))
+            self.tele.error("Error executing case", cid, ":", str(e), e)
             status = "Error"
             #TODO: Set the case.summary.status to 'error', so that it can be queried in the final report data
 
@@ -293,9 +293,13 @@ class Bench:
                 raise 
 
         finally:
+            cid = self.tele.CAse.ID["case_id"]
             #TODO: these might fail as well. handle that gracefully
             self.close_case()
-            self.pipeline.post_case()
+            try:
+                self.pipeline.post_case()
+            except Exception as ee:
+                self.TELE.error("Error producing post-processing data for case:", cid, ee)
         return status
 
 
