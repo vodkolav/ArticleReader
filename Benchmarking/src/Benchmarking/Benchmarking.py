@@ -5,14 +5,16 @@ from pathlib import Path
 # import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
-from Benchmarking.utils import get_path, upd_path
+from Benchmarking.utils import get_path, upd_path, describe
 from Benchmarking.timeutils import Time as T
 from Benchmarking.telemetry_manager import TelemetryManager
 from Benchmarking.Case import Case
+from Benchmarking.Job import Job
 import logging
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO )
+
 
 class Bench:
 
@@ -22,9 +24,12 @@ class Bench:
 
     tele: TelemetryManager # telemetry for current case
 
-    case: Case
+    job: Job
+    # CAse: Case
 
     TELE: TelemetryManager # telemetry for the whole experiment
+
+    EXPERMT: Case
 
     i: int
 
@@ -50,7 +55,7 @@ class Bench:
                        onerror = "skip"):
         
         self.onerror = onerror
-        self.TELE = TelemetryManager()
+        self.TELE = TelemetryManager(self)
         # self.TELE.start(self.config)
     
         self.output_root = output_root
@@ -58,6 +63,8 @@ class Bench:
 
         abspath = Path(benchmarks_root).resolve().as_posix()
         self.TELE.print("Absolute path: ", abspath)
+
+        self._CAse: Case = {}
 
         if folder:
             # load from existing experiment folder 
@@ -72,7 +79,7 @@ class Bench:
             self.TELE.print(f" creating new experiment in {self.bench_folder}.")
             os.makedirs(self.bench_folder, exist_ok=True)
             os.makedirs(self.output_folder, exist_ok=True)
-            self.TELE.CAse = self.config_template()
+            self.EXPERMT = self.config_template()
             self.DONEcases = []
         
 
@@ -92,11 +99,8 @@ class Bench:
 
     def configure(self, pipeline: Pipeline):
         
-        telemetry = TelemetryManager()
-        telemetry.intercept_logging(log_level=logging.WARNING)
-        pipeline.set_telemetry(telemetry)
+
         self.pipeline = pipeline
-        self.tele = telemetry
         # get template case from pipeline
 
 
@@ -183,13 +187,13 @@ class Bench:
             # skip loading data of the whole experiment as an individual case
             if acase.case_signature == 'experiment':
 
-                self.TELE.CAse = acase
+                self.EXPERMT = acase
                 self.TELE.print("loading experiment from ", str(p))
             else:
                 self.DONEcases.append(acase)
 
-        if not self.TELE.CAse:
-            self.TELE.CAse = self.config_template() 
+        if not hasattr(self, "EXPERMT"):
+            self.EXPERMT = self.config_template() 
             self.TELE.warning(f"experiment.json not found in {self.bench_folder}, starting fresh.")
 
    
@@ -244,17 +248,21 @@ class Bench:
         self.TELE.print(f"BEGIN Running {len(self.TODOcases)} cases in experiment {self.experiment_id}.")
         self.i = 0 
 
+        self.job = Job(self.pipeline)
+
         while bool(self.TODOcases):
             # self.tele.reset_log() # TODO: check why this doesn't work - every new case continues to write the log where previous left off 
             # pop until empty
             newCase = self.TODOcases.pop(0)
 
-            status = self.execute_case(newCase)
+            newCase = self.stamp_case(newCase)
+
+            status = self.job.execute_case(newCase)
             
             #dump the TELE of the bench to disk after every case - 
             #otherwise if run fails at some case, the whole bench log is lost
-            self.TELE.collect_log()
-            self.write_config(self.TELE.results(), "experiment", mode='w+')
+            self.TELE.collect_log(self.EXPERMT)
+            self.write_config(self.EXPERMT, "experiment", mode='w+')
 
             if status == "Fatal":
                 self.TELE.error("fatal error in run_case. aborting run")
@@ -262,45 +270,16 @@ class Bench:
                 return
                 # TODO: make it graceful
 
-            self.save_case(newCase) # not really
+            self.save_case(self.job.CAse) # TODO: decide who should be saving the case
 
             self.save_output()
 
-            self.DONEcases += [self.tele.results()]
+            self.DONEcases += [self.job.CAse]
 
             self.i+=1
 
         self.TELE.print("Benchmark run complete!")
-        self.write_config(self.TELE.results(), "experiment", mode='w+')
-
-
-    def execute_case(self, new_case):
-        try:
-            new_case = self.stamp_case(new_case)    
-            self.init_case(new_case)  # deals with configs
-            self.pipeline.init_telemetry() # deals with tracks
-            self.pipeline.run_case()
-            status = "Ok"
-
-        except Exception as e:
-
-            cid = self.tele.CAse.ID["case_id"]
-            self.tele.error("Error executing case", cid, ":", str(e), e)
-            status = "Error"
-            #TODO: Set the case.summary.status to 'error', so that it can be queried in the final report data
-
-            if self.onerror == "fail":
-                raise 
-
-        finally:
-            cid = self.tele.CAse.ID["case_id"]
-            #TODO: these might fail as well. handle that gracefully
-            self.close_case()
-            try:
-                self.pipeline.post_case()
-            except Exception as ee:
-                self.TELE.error("Error producing post-processing data for case:", cid, ee)
-        return status
+        self.write_config(self.EXPERMT, "experiment", mode='w+')
 
 
     def stamp_case(self, newcase: Case):
@@ -333,7 +312,7 @@ class Bench:
             "case_signature": case_sign,
             "case_id": case_sign +"."+ tstp,
             "run_id": case_sign +"."+ tstp,
-            "case_index": self.i, 
+            "case_index": self.i,
             "output_root": self.output_root,
         }
 
@@ -346,71 +325,24 @@ class Bench:
         newcase.update_case(".ID", ID)
 
         if self.i == 0:
-            self.tele.print("Starting first case in this run:\n", 
+            self.TELE.print("Starting first case in this run:\n",
                             newcase.case_signature)
         else:
             sep = "=" * 100
-            self.tele.print("\n", sep, "\nStarting next case", 
-                            newcase.ID['case_index'], 
+            self.TELE.print("\n", sep, "\nStarting next case",
+                            newcase.ID['case_index'],
                             ":\n", newcase.case_signature )
 
         return newcase
 
 
-    def init_case(self, new_case: Case):
-        # self.tele.start(new_case)
 
 
-        force = False
-        if not self.tele.CAse:
-            self.tele.CAse = new_case
-            force = True  # first run, so all initializers must run
-
-        elif self.tele.CAse.config == new_case.config:
-            self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
-
-        #Check for all initializers, whether their value changed and 
-        #re-init whichever have and all their downstream initializers
-
-        for key, init_func in self.pipeline.initializers.items():
-            try:
-                cur_val = self.tele.CAse.get_path(key)
-                new_val = new_case.get_path(key)
-            except KeyError as e:
-                raise ValueError(f"Case is missing required key: {key}")
-
-            different = cur_val != new_val
-            if different or force:
-                force = True # once a change is detected, all downstream initializers must run
-                if not different:
-                    self.tele.print(f" initializing {key} to {new_val}")
-                else:
-                    self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
-                # self.tele.CAse.update_case(key, new_val)
-                init_func(new_case)
-            else:
-                continue  # already initialized to the same value
-        force = False
-
-        self.tele.CAse = new_case
-
-
-    def close_case(self):
-        
-        #result.update(models_result)
-        self.tele.CAse.summary["end_time"] = T.now()
-        self.tele.collect_sensors()
-        self.tele.collect_log()
-        case_indx = self.tele.CAse.ID["case_index"]
-        case_sign = self.tele.CAse.ID["case_signature"]
-        self.tele.print("Case", case_indx, "Done:\n", case_sign )
-
-
-    def save_case(self, case: Case):
+    def save_case(self, newCaseExecuted: Case):
         #case_id = case.ID["case_id"]
         #experiment_run = case.results
-        newCaseExecuted = self.tele.results()
-        case_id = self.tele.CAse.ID["case_id"]
+        # newCaseExecuted = self.tele.results()
+        case_id = self.job.CAse.ID["case_id"]
 
         self.write_config(newCaseExecuted, f"{case_id}.json", self.bench_folder)
         self.TELE.print(f"saving benchmark data to: {case_id}.json")
@@ -420,10 +352,25 @@ class Bench:
         # TODO: should also call pipeline's function - 
         # it's the that's supposed to know how to save the output
         # if not defined - fall back to json save
-        output = self.pipeline.results()
-        case_id = self.tele.CAse.ID["case_id"]
+        output = self.job.pipeline.results()
+        case_id = self.job.CAse.ID["case_id"]
         self.TELE.print(f"saving output data to: {self.output_folder}/{case_id}.json")
         self.write_config(output, f"{case_id}.json", self.output_folder)
+
+
+    def save_other(self,v):
+        #TODO:temporary hack, shold be intergrated into resilient monitor
+        data = v["data"]
+        cid = self.CAse.summary["case_id"]
+        pth = f"dbg/{cid}"
+        os.makedirs(pth, exist_ok=True)
+
+        for prof in data:
+            id = prof["id"]
+            fnm = prof["function_name"]
+            with open(pth + f"/{fnm}_{id}.prof", "w+") as fl:
+                fl.write(prof["profile_log"])
+
 
 
     def test_recomb(self, original, coarse_data, fine_data, case_id):

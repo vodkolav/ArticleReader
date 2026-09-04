@@ -3,6 +3,7 @@
 from Benchmarking import utils as butils
 from Benchmarking.Case import Case
 from Benchmarking.timeutils import Time as T
+# from Benchmarking.Job import Job
 
 import os
 import numpy as np
@@ -39,40 +40,21 @@ class TelemetryManager:
 
     log: list
     sensors: dict = {}
-    _CAse: Case
+    host: []
 
     @property
     def CAse(self):
-        return self._CAse
-
-    @CAse.setter
-    def CAse(self, value):
-        # if not isinstance(value, Case):
-        #     raise ValueError("CAse must be an instance of Case class.")
-        self._CAse = value
-
-        try:
-            incoming_log = self._CAse.get_path(".tracks.log.data")
-        except:
-            incoming_log = []
-
-        self.log = incoming_log + self.log
-
-        #TODO: kinda ugly, should use json paths
-        # also should think about whole lifecycle of the log (and other tracked data)
-        # when it's loaded from previous runs and continued. 
-        # including re-run of individual cases.
+        return self.host.CAse
 
 
-
-    def __init__(self, log_level=logging.WARNING): # experiment_config: dict ):
+    def __init__(self, host, log_level=logging.WARNING): # experiment_config: dict ):
 
         # sensors are independent components that 
         # usually track system resources, such as memory/GPU etc.
         # run on separate threads
         # not in sync with telemetry episodes/epochs
 
-        self._CAse: Case = {}
+        self.host = host
 
         self.log = []
 
@@ -213,9 +195,9 @@ class TelemetryManager:
         self.lastType = 'ping'
 
 
-    def collect_log(self):
-        self.CAse.update_case(".tracks.log", {})
-        self.CAse.update_case(".tracks.log.data", self.log)
+    def collect_log(self, CAse: Case):
+        CAse.update_case(".tracks.log", {})
+        CAse.update_case(".tracks.log.data", self.log)
         # TODO: make log one of the sensors? 
 
 
@@ -228,22 +210,22 @@ class TelemetryManager:
         func = getattr(obj, func_name)
 
         match sensor:
-            case "harvest": 
+            case "harvest":
                 config = self.CAse.get_path(path)
                 from Benchmarking.sensors.Harvester import Harvester
                 snsr = Harvester(**config)
                 # summ_func = getattr(obj, kwargs['summary_func'])
                 func = snsr.attach_to(func)
 
-            case "episodes": 
+            case "episodes":
                 config = self.CAse.get_path(path)
                 from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
                 snsr = EpisodeTracker(**config)
                 summ_func = getattr(obj, kwargs['summary_func'])
                 func = snsr.attach_to(func, summ_func)
 
-            case "resources": 
-                
+            case "resources":
+
                 if "config" in kwargs:
                     config = kwargs["config"]
                 else:
@@ -253,10 +235,10 @@ class TelemetryManager:
                 #summ_func = kwargs['summary_func']
                 func = snsr.attach_to(func)
 
-            case "profile": 
+            case "profile":
                 if  path in self.sensors:
                     snsr = self.sensors[path]
-                else:                        
+                else:
                     if "config" in kwargs:
                         config = kwargs["config"]
                     else:
@@ -269,38 +251,19 @@ class TelemetryManager:
 
         setattr(obj,func_name, func)
         snsr.tele = self
-        self.sensors[path] = snsr        
+        self.sensors[path] = snsr
 
             #case "log":  TODO: decide if me make it a sensor too. or leave it special
 
 
-    def collect_sensors(self):
+    def collect_sensors(self, CAse: Case):
 
-        for k,v in self.sensors.items():            
-            sens_summary = deepcopy(v.summarize())            
+        for k,v in self.sensors.items():
+            sens_summary = deepcopy(v.summarize())
             if "profile" in k and sens_summary['data']!=[]:
                 self.save_other(sens_summary)
 
-            self.CAse.update_case(k, sens_summary)
-
-
-    def save_other(self,v):
-        #TODO:temporary hack, shold be intergrated into resilient monitor
-        data = v["data"]
-        cid = self.CAse.summary["case_id"]
-        pth = f"dbg/{cid}"
-        os.makedirs(pth, exist_ok=True)      
-
-        for prof in data:
-            id = prof["id"]
-            fnm = prof["function_name"]
-            with open(pth + f"/{fnm}_{id}.prof", "w+") as fl:
-                fl.write(prof["profile_log"])
-
-
-    def results(self):
-        return deepcopy(self.CAse.results)
-
+            CAse.update_case(k, sens_summary)
 
 
 class TelemetryManagerHandler(logging.Handler):
