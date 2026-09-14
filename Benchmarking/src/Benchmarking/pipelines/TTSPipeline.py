@@ -75,10 +75,10 @@ class TTSPipeline(Pipeline):
 
         tracks = [
             ".tracks.episodes",
-            #".tracks.profile"
+            # ".tracks.profile"
             #,".tracks.resources" 
             #,".tracks.log",
-            #,".model_tts.tracks.log"
+            #,".tracks.model_tts.log"
             ] 
 
         # TODO: interesting idea: maybe we can use the AttachSensor routine

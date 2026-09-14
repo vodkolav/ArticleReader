@@ -2,8 +2,9 @@ from copy import deepcopy
 import warnings
 import numpy as np
 from Benchmarking.timeutils import Time as T
+from .Sensor import Sensor
 
-class Harvester:
+class Harvester(Sensor):
     """Collects variable values across iterations of a loop, and concatenates them at the end."""
 
     def __init__(self, varnames="", elems=None, on_size_mismatch = 'error', **kwargs):
@@ -146,7 +147,7 @@ class Harvester:
 
         e = lambda k: k.split(".")[-1] if extract_attrs else k
 
-        store = {e(vn): np.concatenate(vals,axis=0) for vn, vals in self.storage.items()}
+        store = {e(vn): np.concatenate(vals,axis=0) if vals else np.array([]) for vn, vals in self.storage.items()}
 
         if break_2d_vectors:
             tmp = [self.break_2D_vec(k,v) for k,v in store.items()]
@@ -183,22 +184,11 @@ class Harvester:
     def summarize(self):
 
         results = self.results()
+        # TODO: avoid calling this twice when collecting the sensor 
 
         res = {
-            #TODO: decide if we need these
-            # "sampling_type": self._sampling_type, # probably this is type "on_demand"
-            # "sampling_value": self.sampling_value,
-            # "extract_attrs" = ?, 
-            # "break_2d_vectors" = ? 
-            "varnames": self.varnames ,
-            "on_size_mismatch": self.on_size_mismatch,
-            "data": results,
-            "summary": {
-                "n_samples": self.sizes(results),
-                    }
+            "n_samples": self.sizes(results),
         }
-        if self.elems:
-            res['elems'] = self.elems 
 
         return res
 

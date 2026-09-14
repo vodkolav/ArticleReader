@@ -385,9 +385,12 @@ def nunpack(a,n):
     return aa[:n] 
 
 
-def describe(subst):
+def describe(subst, how='print'):
     summ = dig({".":subst},-1)
-    print(summ)
+    if how == 'print':
+        print(summ)
+    else:
+        return summ
 
 
 def shape(value):
@@ -470,7 +473,15 @@ def TrackWithID(CAses: list[dict], track: str):
         }})
     ) | add
     """
-    trackdata = jq.compile(query).input(CAses).first()
+
+    jqq = jq.compile(query)
+
+    try:
+        trackdata = jqq.input(CAses).first()
+    except:
+        # fallback for when there are items in CAses that jq can't serialize
+        data =  json.dumps(CAses, cls=NumpyEncoder)
+        trackdata = jqq.input_text(data).first()
 
     return trackdata
 
@@ -487,7 +498,9 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, np.ndarray):
-            return obj.tolist()
+            # TODO: make it serialize np arrays into one horizontal line
+            # so that they are more compact in an indented json
+             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
 
 

@@ -16,37 +16,27 @@ class Job: # or worker? for multithreading...
 
     CAse: Case
 
+    bench = None
 
-    def __init__(self, pipeline: Pipeline):
 
-        self.tele = TelemetryManager(self)
+    @property
+    def onerror(self):
+        return self.bench.onerror
+
+
+    def __init__(self, bench):
+
+        self.CAse = Case({})
+        self.tele = TelemetryManager(self.CAse)
         self.tele.intercept_logging(log_level=logging.WARNING)
-        pipeline.set_telemetry(self.tele)
-        self.CAse = {}
-        self.pipeline = pipeline
+        self.bench = bench
+        self.pipeline = bench.pipeline()
+        self.pipeline.set_telemetry(self.tele)
 
 
-    # @property
-    # def CAse(self):
-    #     return self._CAse
-
-    # @CAse.setter
-    # def CAse(self, value):
-    #     # if not isinstance(value, Case):
-    #     #     raise ValueError("CAse must be an instance of Case class.")
-    #     self._CAse = value
-
-    #     try:
-    #         incoming_log = self._CAse.get_path(".tracks.log.data")
-    #     except:
-    #         incoming_log = []
-
-    #     self.log = incoming_log + self.log
-
-    #     #TODO: kinda ugly, should use json paths
-    #     # also should think about whole lifecycle of the log (and other tracked data)
-    #     # when it's loaded from previous runs and continued. 
-    #     # including re-run of individual cases.
+    #TODO: think about whole lifecycle of the log (and other tracked data)
+    # when it's loaded from previous runs and continued. 
+    # including re-run of individual cases.
 
 
     def execute_case(self, new_case):
@@ -74,15 +64,41 @@ class Job: # or worker? for multithreading...
             try:
                 self.pipeline.post_case()
             except Exception as ee:
-                self.TELE.error("Error producing post-processing data for case:", cid, ee)
+                self.tele.error("Error producing post-processing data for case:", cid, ee)
         return status
 
 
+    def init_telemetry(self, obj, new_case: Case):
+        # re-runs for every new case
+        # TODO: attach monitors for particular pipeline components 
+
+        if obj == None:
+            return # no object to attach to 
+        
+        self.tele.CAse = new_case
+        tracks = new_case['tracks']
+
+        for path, conf in self.tracks_configs(tracks):
+
+            self.tele.AttachSensor(obj, path=".tracks." + path, **conf)
+            obj.tele = self.tele 
+
+
+    def tracks_configs(self, tracks):
+        #TODO: this method is pretty flimsy. 
+        # it relies on existence of 'func_name' key in the 
+        # tracks data, which is not always the case.
+        # need to find a more concrete anchor for identifying the sensor path.
+        for snsr, snsconf in tracks.items():
+            if "func_name" in snsconf.keys():
+                yield snsr, snsconf
+            else:
+                for k, v in snsconf.items():
+                    k = snsr + "." + k
+                    yield k , v
 
 
     def init_case(self, new_case: Case):
-        # self.tele.start(new_case)
-
 
         force = False
         if not self.CAse:
@@ -93,8 +109,9 @@ class Job: # or worker? for multithreading...
             self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
 
 
-        if 'data' in self.CAse['tracks']['harvest']['curves'].keys():
-            print('wait a asec')
+        if 'data' in new_case.get_path('tracks.harvest.curves').keys():
+            #TODO: make this check not dependent of specific path above
+            self.tele.warning("There is already data in the new case. This should not happen")
 
         #Check for all initializers, whether their value changed and 
         #re-init whichever have and all their downstream initializers
@@ -114,7 +131,8 @@ class Job: # or worker? for multithreading...
                 else:
                     self.tele.print(f" re-initializing {key} from {cur_val} to {new_val}")
                 # self.CAse.update_case(key, new_val)
-                init_func(new_case)
+                obj = init_func(new_case)
+                self.init_telemetry(obj, new_case)
             else:
                 continue  # already initialized to the same value
         force = False

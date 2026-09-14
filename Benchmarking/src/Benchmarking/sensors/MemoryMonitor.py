@@ -1,12 +1,13 @@
 import psutil
 
 
+from .Sensor import Sensor
 import os
 import resource
 import threading
 from Benchmarking.timeutils import Time as T
 
-class MemoryMonitor:
+class MemoryMonitor(Sensor):
     """
     Instance-based memory monitor to track CPU memory usage during inference.
     Each instance keeps its own memory log and dynamically adjusts memory limits if needed.
@@ -199,6 +200,10 @@ class MemoryMonitor:
         return wrapper
 
 
+    def results(self, **kwargs):
+        return self.memory_log
+
+
     def summarize(self):
 
         if len(self.memory_log)>1:
@@ -218,12 +223,6 @@ class MemoryMonitor:
             memuse=None
 
         res = {
-            # "model_id": self.model_id ,  #(name)
-            # "stage": self.stage,
-            "sampling_type": "interval_sec",
-            "sampling_value": self.interval,
-            "data": self.memory_log,
-            "summary": {
                 "n_samples": len(self.memory_log),
                 "duration_sec": dur,
                 "max_memory_use_mb": memuse,
@@ -231,10 +230,9 @@ class MemoryMonitor:
                 # "init_rss_mb": self.init_rss_mb,
                 # "memory_limit_bytes": self.memory_limit_bytes,
                 "n_threads": None
-                    }
             }
         return res
-    
+
 
 class ResilientMonitor:
     #monitor that writes data to a separate file immediately upon recieval.

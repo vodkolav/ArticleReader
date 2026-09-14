@@ -1,8 +1,9 @@
 import numpy as np
 from copy import deepcopy
 from Benchmarking.timeutils import Time as T
+from .Sensor import Sensor
 
-class EpisodeTracker:
+class EpisodeTracker(Sensor):
 
     def __init__(self, sampling_type = "interval_sec", sampling_value = 0.1, **kwargs ):
         self.episodes = []
@@ -107,6 +108,7 @@ class EpisodeTracker:
             except Exception as e:
                 self.tele.print(str(e), "Cause:",  str(e.__cause__))
                 self.exception = str(e)
+                i_episode = 0
                 output = None
 
             finally:
@@ -121,6 +123,10 @@ class EpisodeTracker:
 
             return output
         return record_episode_wrapper
+
+
+    def results(self, **kwargs):
+        return self.episodes
 
 
     def summarize(self):
@@ -138,13 +144,8 @@ class EpisodeTracker:
             dur=0
 
         res = {
-            "sampling_type": self._sampling_type,
-            "sampling_value": self.sampling_value,
-            "data": self.episodes,
-            "summary": {
                 "n_samples": len(self.episodes),
                 "duration_sec": dur,
-                "exceptions": self.exception,
-                    }
+                "exceptions": self.exception
         }
         return res

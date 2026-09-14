@@ -5,7 +5,7 @@ from pathlib import Path
 # import pandas as pd
 from Benchmarking.Pipeline import Pipeline
 from Benchmarking.utils import span_grid, delaminate, recombine, read_json, write_json, filter_out_keys
-from Benchmarking.utils import get_path, upd_path, describe
+from Benchmarking.utils import get_path, upd_path, describe, TrackWithID
 from Benchmarking.timeutils import Time as T
 from Benchmarking.telemetry_manager import TelemetryManager
 from Benchmarking.Case import Case
@@ -22,7 +22,7 @@ class Bench:
 
     pipeline: Pipeline
 
-    tele: TelemetryManager # telemetry for current case
+    # tele: TelemetryManager # telemetry for current case
 
     job: Job
     # CAse: Case
@@ -55,7 +55,8 @@ class Bench:
                        onerror = "skip"):
         
         self.onerror = onerror
-        self.TELE = TelemetryManager(self)
+        self.EXPERMT = self.config_template()
+        self.TELE = TelemetryManager(self.EXPERMT)
         # self.TELE.start(self.config)
     
         self.output_root = output_root
@@ -79,7 +80,6 @@ class Bench:
             self.TELE.print(f" creating new experiment in {self.bench_folder}.")
             os.makedirs(self.bench_folder, exist_ok=True)
             os.makedirs(self.output_folder, exist_ok=True)
-            self.EXPERMT = self.config_template()
             self.DONEcases = []
         
 
@@ -98,7 +98,6 @@ class Bench:
 
 
     def configure(self, pipeline: Pipeline):
-        
 
         self.pipeline = pipeline
         # get template case from pipeline
@@ -248,7 +247,7 @@ class Bench:
         self.TELE.print(f"BEGIN Running {len(self.TODOcases)} cases in experiment {self.experiment_id}.")
         self.i = 0 
 
-        self.job = Job(self.pipeline)
+        self.job = Job(self)
 
         while bool(self.TODOcases):
             # self.tele.reset_log() # TODO: check why this doesn't work - every new case continues to write the log where previous left off 
@@ -370,6 +369,13 @@ class Bench:
             fnm = prof["function_name"]
             with open(pth + f"/{fnm}_{id}.prof", "w+") as fl:
                 fl.write(prof["profile_log"])
+
+
+    def TrackWithID(self, track = 'log') -> dict:
+        TELE_log = TrackWithID([self.EXPERMT], track)
+        Caseslog = TrackWithID(self.DONEcases, track)
+        Experiment_Log = TELE_log + Caseslog
+        return Experiment_Log
 
 
 

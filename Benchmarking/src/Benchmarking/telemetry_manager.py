@@ -3,17 +3,23 @@
 from Benchmarking import utils as butils
 from Benchmarking.Case import Case
 from Benchmarking.timeutils import Time as T
+from Benchmarking.sensors.Sensor import Sensor
 # from Benchmarking.Job import Job
 
 import os
 import numpy as np
 import logging
 import traceback
+from typing import Dict
 from copy import deepcopy
 
 
 class DummyTelemetryManager:
-    # TODO: maybe make it an abstract base class, and have TelemetryManager inherit from it.
+    # TODO: maybe make it an abstract base class, 
+    # and have TelemetryManager inherit from it.
+    # also, make it a simple proxy for print() with 
+    # a total silent option 
+
     def __init__(self):
         pass
 
@@ -39,22 +45,19 @@ class TelemetryManager:
     """
 
     log: list
-    sensors: dict = {}
-    host: []
+    sensors: Dict[str,Sensor] = {}
 
-    @property
-    def CAse(self):
-        return self.host.CAse
+    CAse: Case
 
 
-    def __init__(self, host, log_level=logging.WARNING): # experiment_config: dict ):
+    def __init__(self, Case, log_level=logging.WARNING): # experiment_config: dict ):
 
         # sensors are independent components that 
         # usually track system resources, such as memory/GPU etc.
         # run on separate threads
         # not in sync with telemetry episodes/epochs
 
-        self.host = host
+        self._CAse = Case
 
         self.log = []
 
@@ -68,10 +71,10 @@ class TelemetryManager:
 
     def intercept_logging(self, log_level=logging.WARNING):
         """enables interception of all system logs by this telemetry.
-
         Args:
             log_level (_type_, optional): logging level to intercept. Defaults to logging.WARNING.
         """
+        # TODO: check if this might be a problem when we try to run many jobs multithreaded
 
         self.print("TelemetryManager: intercepting system logs at level:", logging.getLevelName(log_level))
 
@@ -164,7 +167,8 @@ class TelemetryManager:
             what = list(what)
             ex = what.pop(i)
             trace = '\n'.join(traceback.format_tb(ex.__traceback__))
-            kwargs = {"traceback": trace} 
+            kwargs = {"message": ex.__repr__(),
+                      "traceback": trace} 
 
         self._print(*what, type = "error", **kwargs)
 
@@ -249,7 +253,10 @@ class TelemetryManager:
                     snsr = MemoryProfiler(**config)
                 func = snsr.attach_to(func)
 
-        setattr(obj,func_name, func)
+        setattr(obj,func_name, func) 
+        #TODO: check whether its better to do this inside sensor.attach_to or here. 
+        #copilot: probably here, because we want to keep the original func intact for other sensors to attach to it.
+        
         snsr.tele = self
         self.sensors[path] = snsr
 
@@ -260,10 +267,12 @@ class TelemetryManager:
 
         for k,v in self.sensors.items():
             sens_summary = deepcopy(v.summarize())
+            sens_data    = deepcopy(v.results())
             if "profile" in k and sens_summary['data']!=[]:
                 self.save_other(sens_summary)
 
-            CAse.update_case(k, sens_summary)
+            CAse.update_case(k + ".summary", sens_summary)
+            CAse.update_case(k + ".data", sens_data)
 
 
 class TelemetryManagerHandler(logging.Handler):

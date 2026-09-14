@@ -2,13 +2,14 @@ import io
 from Benchmarking.timeutils import Time as T
 from memory_profiler import profile
 from typing import Callable, Any, Dict, List, Union
+from .Sensor import Sensor
 # Define the structure for a single profiling record
 # The type hint indicates keys are strings, and values are expected to be 
 # int, float, or string (ProfileRecord is a Dict with keys as str and values 
 # that are one of the types in the Union).
 ProfileRecord = Dict[str, Union[int, float, str]]
 
-class MemoryProfiler:
+class MemoryProfiler(Sensor):
     """
     A utility class to programmatically wrap a function for memory profiling, 
     collecting results and metadata into a list of unified profile dictionaries.
@@ -114,19 +115,17 @@ class MemoryProfiler:
         self.function_call_counts: Dict[str, int] = {} 
 
 
-    def summarize(self) -> List[ProfileRecord]:
+    def results(self, **kwargs)-> List[ProfileRecord]:
+        return  self.profiles
+
+    def summarize(self) :
         """
         Returns the array of all collected profiling data records.
         """
 
         res = {
-            "sampling_type": self.sampling_type,
-            "sampling_value": self.interval,
-            "data": self.profiles,
-            "summary": {
                 "n_samples": len(self.profiles),
-                    }
-            }
+              }
         
         self.clear()
         return res
