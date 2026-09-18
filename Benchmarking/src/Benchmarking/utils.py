@@ -321,11 +321,11 @@ def mg(A,B, sign):
     return res, sign
 
 
-def read_json(filepath):
+def read_json(filepath, **kw):
     """Reads experiment configurations from a JSON file"""
     try:
         with open(filepath, 'r') as f:
-            caSe = json.load(f)
+            caSe = json.load(f, cls=NumpyDecoder, **kw)
     except FileNotFoundError:
         print(f"Error: Configuration file not found at {filepath}")
         return
@@ -335,11 +335,11 @@ def read_json(filepath):
     return caSe
 
 
-def write_json(caSe: dict, filepath, sort_keys = False, mode = 'w'):
+def write_json(caSe: dict, filepath, sort_keys = False, mode = 'w', **kw):
     """Writes experiment configurations to a JSON file"""
     try:
         with open(filepath, mode) as f:
-            json.dump(caSe, f, indent=2, sort_keys=sort_keys, cls=NumpyEncoder)
+            json.dump(caSe, f, indent=2, sort_keys=sort_keys, cls=NumpyEncoder, **kw)
             # TODO: make "indent" variable to let user decide 
             # whether to output indented json for ease of human reading
     except FileNotFoundError as e:
@@ -430,6 +430,23 @@ def one(k,v,f):
     return fmt
 
 
+def strepr(value, max_len = 1000):
+    """shorten string. show only beginning and end with a '...' in between
+    relevant for previewing very long strings 
+
+    Args:
+        value (str): the potentially very long string
+        max_len (int, optional): length at which string is deemed too long to show. Defaults to 50.
+
+    Returns:
+        str: shortened string
+    """
+    if len(value)> max_len:
+        l = int(max_len/3)
+        value = value[:l] + " ... " + value[-l:]
+    return value
+
+
 def dig(subst, f):               
     if isinstance(subst, dict):
         summ = ["  "] + [ one(f'\"{k}\"',v,f+1) for k,v in subst.items() ]
@@ -441,7 +458,7 @@ def dig(subst, f):
         lastitem = f'[{len(subst)}]' 
         summ = "\n" + one(lastitem,subst[-1],f+1)
     elif isinstance(subst, str):
-        summ = f"'{subst.replace("\n","")}'"
+        summ = f"'{strepr(subst.replace("\n",""))}'"
         # summ = f"'{subst.replace("\n","\n" + "    "*(f+1))}'"
     else:
         summ = str(subst)
@@ -486,10 +503,46 @@ def TrackWithID(CAses: list[dict], track: str):
     return trackdata
 
 
+class stupid():
+
+    # This crutch here is temporary in order to make long numpy arrays within the caSe json
+    # to serialize into a one wide line as opposed to a very tall column.
+    # This makes it possible to view the contents of indented caSe json in a text editor.  
+    # 
+    # currently because of this PEP:
+    # https://peps.python.org/pep-0837/
+    # is not yet accepted, in order to achieve this, I'm forced 
+    # to store np arrays as string representations of them.
+    # This class serves as proxy that converts np array 
+    # nodes back and forth between str and list 
+    # If accepted, this PEP should be included in python 3.16
+
+    def __init__(self, kwargs):
+        if "np_orient" in kwargs:
+            self.np_orient = kwargs.pop("np_orient")
+            if self.np_orient not in("horz", "vert"):
+                raise ValueError('np_orient must be "horz" or "vert"')
+        else:
+            self.np_orient = "vert"
+
+    def enc(self, o):
+        return o if self.np_orient == "vert" else json.dumps(o)
+
+    def dec(self,js):
+        js = js.replace("T","t").replace("F","f")
+        return js if self.np_orient == "vert" else json.loads(js) 
+
+
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types 
         taken from https://stackoverflow.com/a/49677241/7097017
     """    
+
+    def __init__(self, *args, **kwargs):
+
+        self.stupid = stupid(kwargs)
+        super().__init__(*args, **kwargs)
+
 
     def default(self, obj):
         import numpy as np
@@ -500,8 +553,24 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray):
             # TODO: make it serialize np arrays into one horizontal line
             # so that they are more compact in an indented json
-             return obj.tolist()
+            return  self.stupid.enc(obj.tolist())
         return json.JSONEncoder.default(self, obj)
+
+
+class NumpyDecoder(json.JSONDecoder):
+    def __init__(self, *args, **kwargs):
+        self.stupid = stupid(kwargs)
+        json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+
+
+    def object_hook(self, dct):
+        if 'data' in dct:
+            if isinstance(dct['data'],dict): #columns
+                dct['data'] = {k:np.array(self.stupid.dec(v)) for k,v in dct['data'].items()}
+                return dct
+            elif isinstance(dct['data'],list): #rows
+                return dct
+        return dct
 
 
 class JsonObjectEncoder(json.JSONEncoder):

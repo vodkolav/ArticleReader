@@ -85,6 +85,7 @@ class Bench:
 
         self.delamination = False
         self.test_recombination = False
+        self.np_orient = "horz"
 
 
     def config_template(self):
@@ -232,7 +233,7 @@ class Bench:
         else: 
             write_json(caSe,
                        os.path.join(path, f"{filename}.json"),
-                       sort_keys=sort_keys, mode = mode)
+                       sort_keys=sort_keys, mode = mode, np_orient = self.np_orient)
 
 
     def addresil(self, new_case):
