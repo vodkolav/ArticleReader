@@ -52,9 +52,16 @@ class Bench:
                        output_root = "output", 
                        folder = None,
                        pattrn = "*",
-                       onerror = "skip"):
+                       onerror = "skip",
+                       **kwargs):
         
         self.onerror = onerror
+
+        if "np_orient" in kwargs:
+            self.np_orient = kwargs["np_orient"]
+        else:
+            self.np_orient = "horz"
+        
         self.EXPERMT = self.config_template()
         self.TELE = TelemetryManager(self.EXPERMT)
         # self.TELE.start(self.config)
@@ -85,7 +92,6 @@ class Bench:
 
         self.delamination = False
         self.test_recombination = False
-        self.np_orient = "horz"
 
 
     def config_template(self):
@@ -209,7 +215,7 @@ class Bench:
 
     def read_config(self, filename):
         config_filepath = os.path.join(self.bench_folder , f"{filename}.json")
-        caSe = read_json(config_filepath)
+        caSe = read_json(config_filepath, np_orient = self.np_orient )
         return caSe
 
 

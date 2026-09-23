@@ -523,14 +523,20 @@ class stupid():
             if self.np_orient not in("horz", "vert"):
                 raise ValueError('np_orient must be "horz" or "vert"')
         else:
-            self.np_orient = "vert"
+            self.np_orient = "horz"
+
 
     def enc(self, o):
-        return o if self.np_orient == "vert" else json.dumps(o)
+        if self.np_orient == "horz":
+            o = json.dumps(o)
+        return o 
+
 
     def dec(self,js):
-        js = js.replace("T","t").replace("F","f")
-        return js if self.np_orient == "vert" else json.loads(js) 
+        if self.np_orient == "horz": 
+            js = js.replace("T","t").replace("F","f")
+            js = json.loads(js) 
+        return js 
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -560,7 +566,7 @@ class NumpyEncoder(json.JSONEncoder):
 class NumpyDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
         self.stupid = stupid(kwargs)
-        json.JSONDecoder.__init__(self, object_hook=self.object_hook, *args, **kwargs)
+        super().__init__(self, object_hook=self.object_hook, *args, **kwargs)
 
 
     def object_hook(self, dct):
