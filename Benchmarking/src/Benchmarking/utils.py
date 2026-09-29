@@ -385,8 +385,8 @@ def nunpack(a,n):
     return aa[:n] 
 
 
-def describe(subst, how='print'):
-    summ = dig({".":subst},-1)
+def describe(subst, how='print', max_len=1000):
+    summ = dig({".":subst},-1,max_len=max_len)
     if how == 'print':
         print(summ)
     else:
@@ -420,10 +420,10 @@ def shape(value):
     return t, l, s, r
 
 
-def one(k,v,f):
+def one(k,v,f, **kw):
     
     t, l, s, r = shape(v) 
-    dug = dig(v,f)
+    dug = dig(v,f,**kw)
     c =  dug # "\n".join(dug)
     i = "    "*f
     fmt = f"{i}{k}: {t}{l}{s}{r} = {c}"
@@ -442,26 +442,26 @@ def strepr(value, max_len = 1000):
         str: shortened string
     """
     if len(value)> max_len:
-        l = int(max_len/3)
+        l = int(max_len/2)
         value = value[:l] + " ... " + value[-l:]
     return value
 
 
-def dig(subst, f):               
+def dig(subst, f, **kw):               
     if isinstance(subst, dict):
-        summ = ["  "] + [ one(f'\"{k}\"',v,f+1) for k,v in subst.items() ]
+        summ = ["  "] + [ one(f'\"{k}\"',v,f+1, **kw) for k,v in subst.items() ]
         summ = "\n".join(summ)
-    elif isinstance(subst, list) :
+    elif isinstance(subst, (list, tuple)) :
         lastitem = f'[{len(subst)}]' 
-        summ = "\n" + one(lastitem,subst[-1],f+1)
+        summ = "\n" + one(lastitem,subst[-1],f+1, **kw)
     elif isinstance(subst, np.ndarray) :
         lastitem = f'[{len(subst)}]' 
-        summ = "\n" + one(lastitem,subst[-1],f+1)
+        summ = "\n" + one(lastitem,subst[-1],f+1, **kw)
     elif isinstance(subst, str):
-        summ = f"'{strepr(subst.replace("\n",""))}'"
+        summ = f"'{strepr(subst.replace("\n",""),**kw)}'"
         # summ = f"'{subst.replace("\n","\n" + "    "*(f+1))}'"
     else:
-        summ = str(subst)
+        summ = strepr(str(subst), **kw)
     return  summ
 
 
@@ -501,6 +501,27 @@ def TrackWithID(CAses: list[dict], track: str):
         trackdata = jqq.input_text(data).first()
 
     return trackdata
+
+
+def JQ(data: list[dict], query: str):
+    """ 
+    Args:
+        CAses (list[dict]): a json object representing Case
+
+    Returns:
+        list[dict]: _description_
+    """
+
+    jqq = jq.compile(query)
+
+    try:
+        result = jqq.input(data).first()
+    except:
+        # fallback for when there are items in CAses that jq can't serialize
+        data =  json.dumps(data, cls=NumpyEncoder, np_orient='vert')
+        result = jqq.input_text(data).first()
+
+    return result
 
 
 class stupid():
@@ -566,7 +587,7 @@ class NumpyEncoder(json.JSONEncoder):
 class NumpyDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
         self.stupid = stupid(kwargs)
-        super().__init__(self, object_hook=self.object_hook, *args, **kwargs)
+        super().__init__(object_hook = self.object_hook, *args, **kwargs)
 
 
     def object_hook(self, dct):

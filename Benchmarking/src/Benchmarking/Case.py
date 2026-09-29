@@ -67,6 +67,12 @@ class Case(dict):
         return val
 
 
+    def TrackWithID(self, track):
+        idd = self.get_path("ID")
+        trc = self.get_path("tracks."+track+".data")
+        [t.update(idd) for t in trc]
+        return trc
+
     def case_filename(self, field = "case_id"):
         opts = ["case_id", "case_signature"]
         if field not in opts:
