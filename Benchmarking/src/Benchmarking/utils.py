@@ -554,10 +554,16 @@ class stupid():
 
 
     def dec(self,js):
-        if self.np_orient == "horz": 
+        if isinstance(js, str) and self.np_orient == "horz": 
             js = js.replace("T","t").replace("F","f")
-            js = json.loads(js) 
+            try:
+                js = json.loads(js) 
+            except:
+                pass
         return js 
+
+    def dec_sample(self, sample: dict):
+        return {k:(self.dec(v)) for k,v in sample.items()}
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -596,6 +602,7 @@ class NumpyDecoder(json.JSONDecoder):
                 dct['data'] = {k:np.array(self.stupid.dec(v)) for k,v in dct['data'].items()}
                 return dct
             elif isinstance(dct['data'],list): #rows
+                dct['data'] = [self.stupid.dec_sample(smp) for smp in dct['data']]
                 return dct
         return dct
 

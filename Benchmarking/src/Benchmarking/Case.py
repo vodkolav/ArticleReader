@@ -70,7 +70,12 @@ class Case(dict):
     def TrackWithID(self, track):
         idd = self.get_path("ID")
         trc = self.get_path("tracks."+track+".data")
-        [t.update(idd) for t in trc]
+        if isinstance(trc, dict):
+            trc.update(idd)
+        elif isinstance(trc, list):
+            [t.update(idd) for t in trc]
+        else: 
+            raise ValueError("strange type of track")
         return trc
 
     def case_filename(self, field = "case_id"):
