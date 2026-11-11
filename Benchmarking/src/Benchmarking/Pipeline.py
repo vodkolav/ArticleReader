@@ -31,3 +31,7 @@ class Pipeline:
     @abstractmethod
     def init_telemetry(self):
         pass
+
+    @abstractmethod
+    def post_case(self):
+        pass

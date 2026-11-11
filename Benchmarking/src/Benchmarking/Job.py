@@ -65,6 +65,8 @@ class Job: # or worker? for multithreading...
                 self.pipeline.post_case()
             except Exception as ee:
                 self.tele.error("Error producing post-processing data for case:", cid, ee)
+                if self.onerror == "fail":
+                    raise
         return status
 
 
@@ -74,6 +76,14 @@ class Job: # or worker? for multithreading...
 
         if obj == None:
             return # no object to attach to 
+        # TODO: currently telemetry attempts to attach all the trackers to each obj provided.
+        # a case where different trackers are attached to different objs is not addressed.
+        # there is only this simple check that skips attaching if the obj is None, 
+        # e.g if it's initializer (in the pipeline) did not return a handle to this object.
+        # This is fine for now, but more granular control should be implemented.
+        # - add object type alongside 'func_name' in the config for matching
+        # or
+        # - only attach if the obj has an attribute specified by 'func_name'  
         
         self.tele.CAse = new_case
         tracks = new_case['tracks']

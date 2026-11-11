@@ -107,6 +107,7 @@ class Bench:
     def configure(self, pipeline: Pipeline):
 
         self.pipeline = pipeline
+        self.EXPERMT["ID"]["pipeline"] = pipeline.__name__
         # get template case from pipeline
 
 

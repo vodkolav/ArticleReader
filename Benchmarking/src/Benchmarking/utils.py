@@ -397,7 +397,7 @@ def shape(value):
     t = type(value).__name__
     if hasattr(value, '__getitem__'):    #some collection... 
         if hasattr(value, 'shape'):         # some numpy, can't dive in. or can? 
-            l, s, r =   ("[", value.shape ,"]") 
+            l, s, r =   ("[", value.shape or (value.size,) ,"]") 
         else:
             if hasattr(value, '__len__'):   # some builtin collection
                 s = len(value)
@@ -418,6 +418,10 @@ def shape(value):
         l, s, r = ("","","")  # scalar, can't dive in; show value
 
     return t, l, s, r
+
+
+def LEN(value):
+    return shape(value)[2][0]
 
 
 def one(k,v,f, **kw):

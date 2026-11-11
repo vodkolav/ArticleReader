@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 from Benchmarking.utils import get_path, upd_path
 
 class Case(dict):
@@ -24,19 +25,19 @@ class Case(dict):
 
     @property
     def config(self) -> dict:
-        return self["config"]
+        return deepcopy(self["config"])
 
     @property
     def ID(self) -> dict:
-        return self["ID"]
+        return deepcopy(self["ID"])
 
     @property
     def tracks(self) -> dict:
-        return self["tracks"]
+        return deepcopy(self["tracks"])
 
     @property
     def summary(self) -> dict:
-        return self["summary"]
+        return deepcopy(self["summary"])
 
     @property
     def case_signature(self) -> dict:

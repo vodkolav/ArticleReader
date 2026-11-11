@@ -2,16 +2,42 @@ from copy import deepcopy
 import warnings
 import numpy as np
 from Benchmarking.timeutils import Time as T
+from Benchmarking.utils import LEN
 from .Sensor import Sensor
 
 class Harvester(Sensor):
     """Collects variable values across iterations of a loop, and concatenates them at the end."""
 
-    def __init__(self, varnames="", elems=None, on_size_mismatch = 'error', **kwargs):
+    def __init__(self, varnames="", elems=None, on_size_mismatch = 'error',
+                 extract_attrs = True, break_2d_vectors = True, **kwargs):
+        
+        """ Harvests raw data during the run
+            
+            Sometimes I want to harvest only some attributes of a variable, for ex. self.X 
+            'extract_attrs' returns their name as just "X", without the "self." part
+            
+            Some variables are stored as 2D arrays of size [n,2] for x,y. 
+            'break_2d_vectors' breaks them into separate x and y arrays so that they are easily read by pd.DataFrame()
+        Args:
+            varnames (list(str)): names of variables to collect. must be spelled exactly as in scope at the line in code where you collect().
+
+            elems (str): name of variable indicating indexes of specific elements to extract from each collected var.
+
+            on_size_mismatch (str, optional): behavior when sizes of collected variables are different. 
+                                              options: 'error', 'warn', 'ignore'. Defaults to To 'error'.
+
+            extract_attrs (bool, optional): rename var.attribute data to just attribute. Defaults to True.
+
+            break_2d_vectors: whether to break 2d vectors. TODO: support not just 2D
+
+        """
+        
         # TODO: add option to specify how to treat error when variable is not found in fnlocals, e.g ignore, warn, or raise error
         self.varnames = varnames
         self.elems = elems
         self.on_size_mismatch = on_size_mismatch
+        self.extract_attrs = extract_attrs
+        self.break_2d_vectors = break_2d_vectors
         self.storage = {vn:[] for vn in varnames}
 
 
@@ -126,30 +152,23 @@ class Harvester(Sensor):
                 self.storage[k] = [deepcopy(v)]
 
 
-    def results(self, extract_attrs = True, break_2d_vectors = True,  **kwargs):
+    def results(self, **kwargs):
         """Returns the harvested data in the form of a dictionary where 
             keys are variable names and values are the collected data, 
             concatenated along individual collect()ions 
             
-            Sometimes I want to harvest only some attributes of a variable, for ex. self.X 
-            'extract_attrs' returns their name as just "X", without the "self." part
-            
-            Some variables are stored as 2D arrays of size [n,2] for x,y. 
-            'break_2d_vectors' breaks them into separate x and y arrays so that they are easily read by pd.DataFrame()
-            
-            'kwargs' allows to filter the whole returned data by some of the collected variables
         Args:
-            extract_attrs (bool, optional): rename var.attribute data to just attribute. Defaults to True.
-            break_2d_vectors: whether to break 2d vectors. 
+            'kwargs' allows to filter the whole returned data by some of the collected variables
+  
         Returns:
             _type_: _description_
         """
 
-        e = lambda k: k.split(".")[-1] if extract_attrs else k
+        e = lambda k: k.split(".")[-1] if self.extract_attrs else k
 
         store = {e(vn): np.concatenate(vals,axis=0) if vals else np.array([]) for vn, vals in self.storage.items()}
 
-        if break_2d_vectors:
+        if self.break_2d_vectors:
             tmp = [self.break_2D_vec(k,v) for k,v in store.items()]
             store = {k: v for d in tmp for k, v in d.items()}
 
@@ -166,7 +185,7 @@ class Harvester(Sensor):
 
     def sizes(self, results):
 
-        lens = [len(v) for v in results.values()]
+        lens = [LEN(v) for v in results.values()]
         allSameSize = all([a == lens[0] for a in lens])
         if not allSameSize: 
             if self.on_size_mismatch == 'warn':
