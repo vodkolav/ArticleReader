@@ -205,24 +205,35 @@ class TelemetryManager:
         # TODO: make log one of the sensors? 
 
 
-    def AttachSensor(self, obj, func_name, path, **kwargs):
+    def AttachSensor(self, obj, path, **kwargs):
 
-        level, tracks, sensor, label = butils.nunpack(path.split("."),4)
+        level, tracks, label = butils.nunpack(path.split("."),3)
+
 
         if tracks != "tracks":
             raise ValueError("path not recognized: " + path)
-        func = getattr(obj, func_name)
+
+        sensor = kwargs["sensor"]
+
+        obj = self.fits(obj, **kwargs)
+        if obj == None:
+            return
 
         match sensor:
             case "harvest":
-                config = self.CAse.get_path(path)
+                config = kwargs # self.CAse.get_path(path)
                 from Benchmarking.sensors.Harvester import Harvester
                 snsr = Harvester(**config)
-                # summ_func = getattr(obj, kwargs['summary_func'])
-                func = snsr.attach_to(func)
+                snsr.attach_to(obj)
+
+            case "timer":
+                config = kwargs
+                from Benchmarking.sensors.Timer import Timer
+                snsr = Timer(**config)
+                snsr.attach_to(obj)
 
             case "episodes":
-                config = self.CAse.get_path(path)
+                config = self.CAse.get_path(path) # TODO: change these to kwarrgs too
                 from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
                 snsr = EpisodeTracker(**config)
                 summ_func = getattr(obj, kwargs['summary_func'])
@@ -253,11 +264,14 @@ class TelemetryManager:
                     snsr = MemoryProfiler(**config)
                 func = snsr.attach_to(func)
 
-        setattr(obj,func_name, func) 
         #TODO: check whether its better to do this inside sensor.attach_to or here. 
         #copilot: probably here, because we want to keep the original func intact for other sensors to attach to it.
         
-        snsr.tele = self
+        snsr.tele = self.tele
+
+        if path in self.sensors.keys():
+            self.tele.warning("replacing sensor:", path)
+
         self.sensors[path] = snsr
 
             #case "log":  TODO: decide if me make it a sensor too. or leave it special
@@ -273,6 +287,7 @@ class TelemetryManager:
 
             CAse.update_case(k + ".summary", sens_summary)
             CAse.update_case(k + ".data", sens_data)
+            v.reset()
 
 
 class TelemetryManagerHandler(logging.Handler):

@@ -1,9 +1,11 @@
 from Benchmarking.Case import Case
 from Benchmarking.telemetry_manager import TelemetryManager
 from Benchmarking.timeutils import Time as T
-
+from Benchmarking.sensors.Sensor import Sensor
 from Benchmarking.Pipeline import Pipeline
+from Benchmarking import utils as butils
 
+from typing import Dict
 import os
 from copy import deepcopy
 import logging
@@ -15,6 +17,8 @@ class Job: # or worker? for multithreading...
     pipeline: Pipeline
 
     CAse: Case
+
+    sensors: Dict[str,Sensor] = {}
 
     bench = None
 
@@ -31,7 +35,8 @@ class Job: # or worker? for multithreading...
         self.tele.intercept_logging(log_level=logging.WARNING)
         self.bench = bench
         self.pipeline = bench.pipeline()
-        self.pipeline.set_telemetry(self.tele)
+        self.pipeline.tele = self.tele
+
 
 
     #TODO: think about whole lifecycle of the log (and other tracked data)
@@ -42,8 +47,8 @@ class Job: # or worker? for multithreading...
     def execute_case(self, new_case):
         try:
             
-            self.init_case(new_case)  # deals with configs
-            self.pipeline.init_telemetry() # deals with tracks
+            self.init_case(new_case)  # deals with configs             #timeit
+
             self.pipeline.run_case()
             status = "Ok"
 
@@ -62,12 +67,120 @@ class Job: # or worker? for multithreading...
             #TODO: these might fail as well. handle that gracefully
             self.close_case()
             try:
-                self.pipeline.post_case()
+                 self.pipeline.post_case()
             except Exception as ee:
                 self.tele.error("Error producing post-processing data for case:", cid, ee)
                 if self.onerror == "fail":
                     raise
         return status
+
+
+    def fits(self, obj, **kwargs):
+        obn = type(obj).__name__
+        if "Class" in kwargs.keys():
+            cls = kwargs["Class"] 
+            if cls == obn: 
+                return obj
+            # elif hasattr(obj, "pipeline"):
+            #     obn = type(obj.pipeline).__name__
+            #     if obn == cls: 
+            #         return obj.pipeline
+            #     else: 
+            #         return None
+            else:
+                return None
+        elif "func_name" in kwargs.keys():
+            fnc = kwargs["func_name"]
+            if hasattr(obj, fnc):
+                return obj
+            else:
+                return None
+        else:
+            return None
+
+
+    def AttachSensor(self, obj, path, **kwargs):
+
+        level, tracks, label = butils.nunpack(path.split("."),3)
+
+        if tracks != "tracks":
+            raise ValueError("path not recognized: " + path)
+
+        sensor = kwargs["sensor"]
+
+        obj = self.fits(obj, **kwargs)
+        if obj == None:
+            return
+
+        match sensor:
+            case "harvest":
+                config = kwargs 
+                from Benchmarking.sensors.Harvester import Harvester
+                snsr = Harvester(**config)
+                snsr.attach_to(obj)
+
+            case "timer":
+                config = kwargs
+                from Benchmarking.sensors.Timer import Timer
+                snsr = Timer(**config)
+                snsr.attach_to(obj)
+
+            case "episodes":
+                config = self.CAse.get_path(path) # TODO: change these to kwarrgs too
+                from Benchmarking.sensors.EpisodeTracker import EpisodeTracker
+                snsr = EpisodeTracker(**config)
+                summ_func = getattr(obj, kwargs['summary_func'])
+                func = snsr.attach_to(func, summ_func)
+
+            case "resources":
+
+                if "config" in kwargs:
+                    config = kwargs["config"]
+                else:
+                    config = self.CAse.get_path(path)
+                from Benchmarking.sensors.MemoryMonitor import MemoryMonitor
+                snsr = MemoryMonitor(**config)
+                #summ_func = kwargs['summary_func']
+                func = snsr.attach_to(func)
+
+            case "profile":
+                if  path in self.sensors:
+                    snsr = self.sensors[path]
+                else:
+                    if "config" in kwargs:
+                        config = kwargs["config"]
+                    else:
+                        config = self.CAse.get_path(path)
+                        # config = butils.get_path(path, self.case, default= {})  
+                        # TODO: verify we really don't need 'default' parameter
+                    from Benchmarking.sensors.MemoryProfiler import MemoryProfiler
+                    snsr = MemoryProfiler(**config)
+                func = snsr.attach_to(func)
+
+        #TODO: check whether its better to do this inside sensor.attach_to or here. 
+        #copilot: probably here, because we want to keep the original func intact for other sensors to attach to it.
+        
+        snsr.tele = self.tele
+
+        if path in self.sensors.keys():
+            self.tele.warning("replacing sensor", path)
+
+        self.sensors[path] = snsr
+
+            #case "log":  TODO: decide if me make it a sensor too. or leave it special
+
+
+    def collect_sensors(self, CAse: Case):
+
+        for k,v in self.sensors.items():
+            sens_summary = deepcopy(v.summarize())
+            sens_data    = deepcopy(v.results())
+            if "profile" in k and sens_summary['data']!=[]:
+                self.save_other(sens_summary)
+
+            CAse.update_case(k + ".summary", sens_summary)
+            CAse.update_case(k + ".data", sens_data)
+            v.reset()
 
 
     def init_telemetry(self, obj, new_case: Case):
@@ -88,10 +201,10 @@ class Job: # or worker? for multithreading...
         self.tele.CAse = new_case
         tracks = new_case['tracks']
 
-        for path, conf in self.tracks_configs(tracks):
+        for path, conf in tracks.items():
 
-            self.tele.AttachSensor(obj, path=".tracks." + path, **conf)
-            obj.tele = self.tele 
+            self.AttachSensor(obj, path=".tracks." + path, **conf)
+        obj.tele = self.tele 
 
 
     def tracks_configs(self, tracks):
@@ -119,7 +232,7 @@ class Job: # or worker? for multithreading...
             self.tele.warning("all configs are already identical, which should not happen")  # raise Error?;  
 
 
-        if 'data' in new_case.get_path('tracks.harvest.curves').keys():
+        if 'data' in new_case.get_path('tracks.curves').keys():
             #TODO: make this check not dependent of specific path above
             self.tele.warning("There is already data in the new case. This should not happen")
 
@@ -154,13 +267,12 @@ class Job: # or worker? for multithreading...
 
         #result.update(models_result)
         self.CAse.summary["end_time"] = T.now()
-        self.tele.collect_sensors(self.CAse)
+        self.collect_sensors(self.CAse)
         case_indx = self.CAse.ID["case_index"]
         case_sign = self.CAse.ID["case_signature"]
         self.tele.print("Case", case_indx, "Done:\n", case_sign )
         self.tele.collect_log(self.CAse)
         self.tele.reset_log()
-        print('hi')
 
 
     # def results(self):

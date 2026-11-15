@@ -8,7 +8,7 @@ from .Sensor import Sensor
 class Harvester(Sensor):
     """Collects variable values across iterations of a loop, and concatenates them at the end."""
 
-    def __init__(self, varnames="", elems=None, on_size_mismatch = 'error',
+    def __init__(self, func_name, varnames="", elems=None, on_size_mismatch = 'error',
                  extract_attrs = True, break_2d_vectors = True, **kwargs):
         
         """ Harvests raw data during the run
@@ -33,6 +33,7 @@ class Harvester(Sensor):
         """
         
         # TODO: add option to specify how to treat error when variable is not found in fnlocals, e.g ignore, warn, or raise error
+        self.func_name = func_name
         self.varnames = varnames
         self.elems = elems
         self.on_size_mismatch = on_size_mismatch
@@ -67,7 +68,9 @@ class Harvester(Sensor):
 
 
 
-    def attach_to(self, dump_func):
+    def attach_to(self, obj):
+
+        dump_func = getattr(obj, self.func_name)
 
         def wrapper(*args, **kwargs):
 
@@ -77,23 +80,19 @@ class Harvester(Sensor):
                 # i_episode = summary_func(mode="index")
 
             except Exception as e:
-                self.tele.print(str(e), "Cause:",  str(e.__cause__))
+                self.tele.error(str(e), "Cause:",  str(e.__cause__))
                 self.exception = str(e)
                 output = None
 
             finally:
                 #if self.time_to_record(i_episode):
                 self.collect(*args, **kwargs)
-                
-                    # self.record["end_time"] = T.now()
-                    # self.record["i"] = i_episode
-                    # data = summary_func(mode = "data")
-                    # self.record.update(data)
-                    # self.episodes.append(deepcopy(self.record))
-                    # self.record = {}
+
 
             return output
-        return wrapper
+
+        setattr(obj, self.func_name, wrapper)
+
 
 
     def collect(self, fnlocals):

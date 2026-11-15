@@ -24,9 +24,6 @@ class Pipeline:
     def output(self):
         pass
 
-    @abstractmethod
-    def set_telemetry(self, tele: TelemetryManager):
-        pass
 
     @abstractmethod
     def init_telemetry(self):

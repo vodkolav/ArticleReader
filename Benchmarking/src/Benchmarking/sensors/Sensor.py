@@ -15,6 +15,8 @@ class Sensor:
     def summarize(self):
         pass
 
+    def reset(self):
+        pass
 
         #TODO: implement different forms of scheduling reports
         # - total episodes to report (requires how many total episodes will be)
